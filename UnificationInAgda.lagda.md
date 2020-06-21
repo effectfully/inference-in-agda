@@ -318,7 +318,7 @@ Even this doesn't type check:
           (suc n) -> n
 ```
 
-even though Agda really could figure out that if `zero` is returned from one of the branches, then the type of the result is `ℕ`, and since `n` is returned from the other branch and pattern matching is non-dependent, `n` must have the same type. Not sure if it's a deficiency in the type checker or I don't get something.
+even though Agda really could figure out that if `zero` is returned from one of the branches, then the type of the result is `ℕ`, and since `n` is returned from the other branch and pattern matching is non-dependent, `n` must have the same type. See [#2834](https://github.com/agda/agda/issues/2834) for why Agda doesn't attempt to be clever here.
 
 There's a funny syntactical way to tell Agda that a function is non-dependent: just do not bind a variable at the type level. This type checks:
 
@@ -595,7 +595,7 @@ Even though at the call site (`f True`) `b` is determined via the `b ~ ()` const
 
 The type of the `f` function mentions the `b` variable in the `C a b` constraint, but that variable is not mentioned anywhere else and hence can't be inferred in the general case, so Haskell complains, because by default it wants all type variables to be inferrable upfront regardless of whether at the call site it would be possible to infer a variable in some cases or not. We can override the default behavior by enabling the `AllowAmbiguousTypes` extension, which makes the code type check without any additional changes.
 
-Agda's unification capabilities are well above Haskell's ones, so Agda doesn't attempt to predict what can and can't be inferred and allows to make anything implicit deferring resolution problems to the call site (i.e. it's like having `AllowAmbiguousTypes` globally enabled in Haskell). In fact, you can make implicit even such things that are pretty much guaranteed to never have any chance of being inferred, for example
+Agda's unification capabilities are well above Haskell's ones, so Agda doesn't attempt to predict what can and can't be inferred and allows us to make anything implicit deferring resolution problems to the call site (i.e. it's like having `AllowAmbiguousTypes` globally enabled in Haskell). In fact, you can make implicit even such things that are pretty much guaranteed to never have any chance of being inferred, for example
 
 ```agda
   const-zeroᵢ : {_ : ℕ} -> ℕ
@@ -959,7 +959,7 @@ Specializing `m` doesn't help, still yellow:
   _ = λ n m (xs : Vec ℕ (n +′ m)) -> idᵥ⁺ {m = m} xs
 ```
 
-And specializing `n` (with or without `m`) allows to resolve all the metas:
+And specializing `n` (with or without `m`) allows Agda to resolve all the metas:
 
 ```agda
   _ = λ n m (xs : Vec ℕ (n +′ m)) -> idᵥ⁺ {n = n} xs
@@ -1022,21 +1022,21 @@ A function mentioning `_*_`
 at the type level has to receive both the arguments that get fed to `_*_` explicitly, even though `_*_` doesn't directly match on `m`. This is because in the second clause `_*_` expands to `_+_`, which does match on `m`. So it's
 
 ```agda
-  idᵥ̂* : ∀ {A} n m -> Vec A (n * m) -> Vec A (n * m)
-  idᵥ̂* n m xs = xs
+  idᵥ* : ∀ {A} n m -> Vec A (n * m) -> Vec A (n * m)
+  idᵥ* n m xs = xs
 ```
 
 and none of
 
 ```agda
-  _ = idᵥ̂* 2 _ (1 ∷ᵥ 2 ∷ᵥ []ᵥ)  -- `m` can't be inferred
-  _ = idᵥ̂* _ 1 (1 ∷ᵥ 2 ∷ᵥ []ᵥ)  -- `n` can't be inferred
+  _ = idᵥ* 2 _ (1 ∷ᵥ 2 ∷ᵥ []ᵥ)  -- `m` can't be inferred
+  _ = idᵥ* _ 1 (1 ∷ᵥ 2 ∷ᵥ []ᵥ)  -- `n` can't be inferred
 ```
 
 type check, unlike
 
 ```agda
-  _ = idᵥ̂* 2 1 (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
+  _ = idᵥ* 2 1 (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
 ```
 
 #### Example 4
@@ -1235,9 +1235,9 @@ Here's an example of a theoretical limitation: a definition like
 
 can't be inverted, because the result (`Bool` in both the cases) does not determine the argument (either `true` or `false`).
 
-#### Example 1
+#### Example 1: universe of types
 
-There's a standard technique ([the universe pattern](https://groups.google.com/forum/#!msg/idris-lang/N9_pVqG8dO8/mHlNmyL6AwAJ)) that allows to get ad hoc polymorphism (a.k.a. type classes) for a closed set of types in a dependently typed world.
+There's a standard technique ([the universe pattern](https://groups.google.com/forum/#!msg/idris-lang/N9_pVqG8dO8/mHlNmyL6AwAJ)) that allows us to get ad hoc polymorphism (a.k.a. type classes) for a closed set of types in a dependently typed world.
 
 We introduce a universe of types, which is a data type containing tags for actual types:
 
@@ -1307,7 +1307,7 @@ A few tests:
 
 It's possible to leave `A` implicit in `_==_` and get it inferred in the tests above precisely because `⟦_⟧` is constructor-headed. If we had `bool₁` and `bool₂` tags both mapping to `Bool`, inference for `_==_` would not work for booleans, lists of booleans etc. In the version of Agda I'm using inference for naturals, lists of naturals etc still works though, if an additional `bool` is added to the universe, i.e. breaking constructor-headedness of a function for certain arguments does not result in inference being broken for others.
 
-#### Example 2
+#### Example 2: `boolToℕ`
 
 Constructor-headed functions can also return values rather than types. For example this function:
 
@@ -1340,6 +1340,100 @@ as Agda knows how to solve `boolToℕ _b =?= zero` or `boolToℕ _b =?= suc zero
     -- suc _n_624 != zero of type ℕ
     _ = idVecAsMaybe (0 ∷ᵥ 1 ∷ᵥ []ᵥ)
 
+Note that `boolToℕ` defined like that:
+
+```agda
+  boolToℕ′ : Bool -> ℕ
+  boolToℕ′ false = zero + zero
+  boolToℕ′ true  = suc zero
+```
+
+is not considered to be constructor-headed as the second test in
+
+```agda
+  idVecAsMaybe′ : ∀ {b} -> Vec ℕ (boolToℕ′ b) -> Vec ℕ (boolToℕ′ b)
+  idVecAsMaybe′ xs = xs
+
+  _ = idVecAsMaybe′ []ᵥ
+  _ = idVecAsMaybe′ (0 ∷ᵥ []ᵥ)
+```
+
+is now yellow. But not the first one. Which is weird. Can't explain that.
+
+I.e. Agda does not always reduce the rhs of the clauses of a function when checking for constructor-headedness, which is unfortunate.
+
+
+
+#### Example 3: polyvariadic `zip`
+
+```agda
+module PolyvariadicZip where
+  open import Data.List.Base as List
+  open import Data.Vec.Base as Vec renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
+```
+
+We can define this family of functions over vectors:
+
+    replicate : ∀ {n} → A → Vec A n
+    map : ∀ {n} → (A → B) → Vec A n → Vec B n
+    zipWith : ∀ {n} → (A → B → C) → Vec A n → Vec B n → Vec C n
+    zipWith3 : ∀ {n} → (A → B → C → D) → Vec A n → Vec B n → Vec C n → Vec D n
+
+(the Agda stdlib provides all functions but the last one)
+
+Can we define a generic function that covers all of the above? Its type signature should look like this:
+
+    (A₁ -> A₂ -> ... -> B) -> Vec A₁ n -> Vec A₂ n -> ... -> Vec B n
+
+Yes: we can parameterize a function by a list of types and compute those n-ary types from the list. Folding a list of types into a type, given also the type of the result, is trivial:
+
+```agda
+  ToFun : List Set -> Set -> Set
+  ToFun []       B = B
+  ToFun (A ∷ As) B = A -> ToFun As B
+```
+
+This allows us to compute the n-ary type of the function. In order to compute the n-ary type of the result we need to map the list of types with `λ A -> Vec A n` and turn `B` (the type of the resulting of the zipping function) into `Vec B n` (the type of the final result):
+
+```agda
+  ToVecFun : List Set -> Set -> ℕ -> Set
+  ToVecFun As B n = ToFun (List.map (λ A -> Vec A n) As) (Vec B n)
+```
+
+It only remains to recurse on the list of types in an auxiliary function (n-ary `(<*>)`, using Haskell jargon) and define `zipN` in terms of that function:
+
+```agda
+  apN : ∀ {As B n} -> Vec (ToFun As B) n -> ToVecFun As B n
+  apN {[]}     ys = ys
+  apN {A ∷ As} fs = λ xs -> apN {As} (fs ⊛ xs)
+
+  zipN : ∀ {As B n} -> ToFun As B -> ToVecFun As B n
+  zipN f = apN (Vec.replicate f)
+```
+
+Some tests verifying that the function does what it's supposed to:
+
+```agda
+  _ : zipN 1 ≡ (1 ∷ᵥ 1 ∷ᵥ 1 ∷ᵥ []ᵥ)
+  _ = refl
+
+  _ : zipN suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ (2 ∷ᵥ 3 ∷ᵥ 4 ∷ᵥ []ᵥ)
+  _ = refl
+
+  _ : zipN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
+  _ = refl
+```
+
+Note how we do not provide the list of types explicitly in any of these cases, even though there's pattern matching on that list.
+
+```agda
+  _ : ∀ {n} -> ToFun _ _ ≡ (ℕ -> ℕ -> ℕ)
+  _ = refl
+
+  _ : ∀ {n} -> ToVecFun _ _ n ≡ (Vec ℕ n -> Vec ℕ n -> Vec ℕ n)
+  _ = refl
+```
+
 ### Constructor/argument-headed functions
 
 ```agda
@@ -1365,7 +1459,7 @@ The usual definition is this one:
 
 As you can see here we return one of the arguments in the first clause and the second clause is constructor-headed. Just like for regular constructor-headed function, Agda has enhanced inference for functions of this kind as well.
 
-Quoting the changelog (TODO: add link):
+Quoting the [changelog](https://github.com/agda/agda/blob/064095e14042bdf64c7d7c97c2869f63f5f1f8f6/doc/release-notes/2.5.4.md#pattern-matching):
 
 > Improved constraint solving for pattern matching functions
 > Constraint solving for functions where each right-hand side has a distinct rigid head has been extended to also cover the case where some clauses return an argument of the function. A typical example is append on lists:
@@ -1375,6 +1469,8 @@ Quoting the changelog (TODO: add link):
 >     (x ∷ xs) ++ ys = x ∷ (xs ++ ys)
 >
 > Agda can now solve constraints like ?X ++ ys == 1 ∷ ys when ys is a neutral term.
+
+#### Example 1: back to `idᵥ⁺`
 
 Now if we come back to this example (TODO: add highlighting somehow?):
 
@@ -1441,16 +1537,174 @@ still does not type check, because inlining `m` as `1` does not make `_+_` const
     zero  +1 = suc zero
     suc n +1 = suc (n +1)
 
+
+
+
+
+####
+
+```agda
+  1OrDouble : Bool -> ℕ -> ℕ
+  1OrDouble false n = suc zero
+  1OrDouble true  n = 0 + 0
+```
+
+```agda
+  _ : 1OrDouble _ 0 ≡ 1
+  _ = refl
+```
+
+
+
+
 ## Eta-rules
 
+```agda
+module EtaRules where
+```
+
+Agda implements eta-rules for "negative" types (TODO: link).
+
+One such rule is that a function is definitionally equal to its eta-expanded version:
+
+```agda
+  _ : ∀ {A : Set} {B : A -> Set} -> (f : ∀ x -> B x) -> (f ≡ (λ x -> f x))
+  _ = λ f -> refl
+```
+
+Usefulness of this eta-rule is not something that one thinks of much, but that is only until they try to work in a language that doesn't support the rule (spoiler: it's a huge pain).
+
+All records support eta-rules by default (that can be switched off for a single record via an explicit `no-eta-equality` mark or for all records via TODO: what).
+
+The simplest record is one with no fields:
+
+```agda
+  record Unit : Set where
+    constructor unit
+```
+
+The eta-rule for `Unit` is "all terms of type `Unit` are equal to `unit`":
+
+```agda
+  _ : (u : Unit) -> u ≡ unit
+  _ = λ u -> refl
+```
+
+Consequently, since all terms of type `Unit` are equal to `unit`, they are also equal to each other:
+
+```agda
+  _ : (u1 u2 : Unit) -> u1 ≡ u2
+  _ = λ u1 u2 -> refl
+```
+
+This eta-rule applies to `⊤`, precisely because `⊤` is defined as a record with no fields.
+
+For a record with fields the eta-rule is "an element of the record is always the constructor of the record applied to its fields". For example:
+
+```agda
+  record Triple (A B C : Set) : Set where
+    constructor triple
+    field
+      fst : A
+      snd : B
+      thd : C
+  open Triple
+
+  _ : ∀ {A B C} -> (t : Triple A B C) -> t ≡ triple (fst t) (snd t) (thd t)
+  _ = λ t -> refl
+```
+
+Supporting eta-equality for sum types is possible in theory (TODO: link), but Agda does not implement that. Any `data` definition in Agda does not support eta-equality, including an empty `data` declaration like
+
+```agda
+  data Empty : Set where
+```
+
+(which is always isomorphic to `Data.Empty.⊥` and is how `⊥` is defined in the first place).
+
+Eta-rules for records may seem not too exciting, but there are a few important use cases.
+
+### Computing predicates
+
+### N-ary things
+
+Composition (TODO: link)
+
+```agda
 
 
 
+--   _ = Bool ∷ᵥ []ᵥ
+```
 
+    λ g y          -> g y
+    λ g f x        -> g (f x)
+    λ g f x₁ x₂    -> g (f x₁ x₂)
+    λ g f x₁ x₂ x₃ -> g (f x₁ x₂ x₃)
+
+
+```agda
+
+
+
+  -- _ : Vec.map suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
+  -- _ = refl
+
+  -- _ : Vec.zipWith _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+  -- _ = refl
+
+  -- _ : zipN suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
+  -- _ = refl
+
+  -- _ : zipN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+  -- _ = refl
+
+  -- _ : zipN {_ ∷ []} suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
+  -- _ = refl
+
+  -- _ : zipN {_ ∷ _ ∷ []} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+  -- _ = refl
+```
+
+```agda
+module zipVN where
+  open import Data.Vec.Base renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
+
+  ToFun : ∀ {k} -> Vec Set k -> Set -> Set
+  ToFun {zero}  As B = B
+  ToFun {suc k} As B = head As -> ToFun (tail As) B
+
+  apN
+    : ∀ k {As : Vec Set k} {B n}
+    -> Vec (ToFun As B) n
+    -> ToFun (map (λ A -> Vec A n) As) (Vec B n)
+  apN zero             ys = ys
+  -- Have to pattern match on `As` here, otherwise stuff doesn't reduce properly
+  -- and the whole thing does not type check.
+  apN (suc k) {_ ∷ᵥ _} fs = λ xs -> apN k (fs ⊛ xs)
+
+  zipN
+    : ∀ k {As : Vec Set k} {B n}
+    -> ToFun As B
+    -> ToFun (map (λ A -> Vec A n) As) (Vec B n)
+  zipN k f = apN k (replicate f)
+
+  _ : zipN 1 suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
+  _ = refl
+
+  _ : zipN 2 _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+  _ = refl
+```
+
+-- Vec.map f xs
 
 
 
 ## Universe levels
+
+```agda
+module UniverseLevels where
+```
 
 There are a bunch of definitional equalities associated with universe levels. Without them universe polymorphism would be nearly unusable. Here are the equalities:
 
