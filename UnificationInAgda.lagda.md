@@ -885,6 +885,9 @@ is an error despite the two functions being syntactically equal. Here's the funn
 Generally speaking, pattern matching breaks inference. We'll consider various cases, but to start with the simplest ones we need to introduce a slightly weird definition of the plus operator:
 
 ```agda
+module WeirdPlus where
+  open DataConstructors
+
   _+′_ : ℕ -> ℕ -> ℕ
   zero  +′ m = m
   suc n +′ m = n + suc m
@@ -1105,6 +1108,7 @@ logic applies. Test:
 #### Large elimination
 
 ```agda
+module LargeElimination where
   open BasicsOfTypeInference
 ```
 
@@ -1143,6 +1147,10 @@ The reason for this behavior is the same as with all the previous examples: patt
 
 ### Generalization
 
+```agda
+module Generalization where
+```
+
 In general: given a function `f` that receives `n` arguments on which there's pattern matching anywhere in the definition of `f` (including calls to other functions in the body of `f`) and `m` arguments on which there is no pattern matching, we have the following rule (for simplicity of presentation we place `pᵢ` before `xⱼ`, but the same rule works when they're interleaved)
 
     p₁    ...    pₙ        (f p₁ ... pₙ x₁ ... xₘ)
@@ -1154,6 +1162,12 @@ i.e. if every `pᵢ` can be inferred from the current context, then every `xⱼ`
 There is an important exception from this rule and this is what comes next.
 
 ### [Constructor-headed functions](https://wiki.portal.chalmers.se/agda/pmwiki.php?n=ReferenceManual.FindingTheValuesOfImplicitArguments)
+
+```agda
+module ConstructorHeadedFunctions where
+  open BasicsOfTypeInference
+  open DataConstructors
+```
 
 Consider a definition of `ListOfBoolOrℕ` that is slightly different from the previous one, but is isomorphic to it:
 
@@ -1209,7 +1223,7 @@ and this determines that for the result to be `ℕ` the value of `_b` must be `t
     ListOfBoolOrℕ false = List Bool
     ListOfBoolOrℕ true  = List ℕ
 
-in that the latter definition has the same head in both the clauses (`List`) and so the heuristic doesn't apply. Even though Agda really could have figured out that `ListOfBoolOrℕ` is also injective, i.e. the fact that `ListOfBoolOrℕ` is not consdered invertible is more of an implementation detail than a theoretical limination.
+in that the latter definition has the same head in both the clauses (`List`) and so the heuristic doesn't apply. Even though Agda really could have figured out that `ListOfBoolOrℕ` is also injective. I.e. the fact that `ListOfBoolOrℕ` is not consdered invertible is more of an implementation detail than a theoretical limination.
 
 Here's an example of a theoretical limitation: a definition like
 
@@ -1223,7 +1237,7 @@ can't be inverted, because the result (`Bool` in both the cases) does not determ
 
 #### Example 1
 
-There's a standard technique ([the universe pattern](https://groups.google.com/forum/#!msg/idris-lang/N9_pVqG8dO8/mHlNmyL6AwAJ)) that allows to get ad hoc polymorphism (aka type classes) for a closed set of types in a dependently typed world.
+There's a standard technique ([the universe pattern](https://groups.google.com/forum/#!msg/idris-lang/N9_pVqG8dO8/mHlNmyL6AwAJ)) that allows to get ad hoc polymorphism (a.k.a. type classes) for a closed set of types in a dependently typed world.
 
 We introduce a universe of types, which is a data type containing tags for actual types:
 
@@ -1267,7 +1281,7 @@ and then mimic the `Eq` type class for the types from this universe by directly 
     _==_ {list A} x y = x ==List y
 ```
 
-`_==_` checs equality of two elements from any type from the universe.
+`_==_` checks equality of two elements from any type from the universe.
 
 Note that `_==List_` is defined mutually with `_==_`, because elements of lists can be of any type from the universe, i.e. they can also be lists, hence the mutual recursion.
 
@@ -1291,7 +1305,7 @@ A few tests:
   _ = refl
 ```
 
-It's possible to leave `A` implicit in `_==_` and get it inferred in the tests above precisely because `⟦_⟧` is constructor-headed.
+It's possible to leave `A` implicit in `_==_` and get it inferred in the tests above precisely because `⟦_⟧` is constructor-headed. If we had `bool₁` and `bool₂` tags both mapping to `Bool`, inference for `_==_` would not work for booleans, lists of booleans etc. In the version of Agda I'm using inference for naturals, lists of naturals etc still works though, if an additional `bool` is added to the universe, i.e. breaking constructor-headedness of a function for certain arguments does not result in inference being broken for others.
 
 #### Example 2
 
@@ -1321,10 +1335,115 @@ then it won't be necessary to specify `b`:
 
 as Agda knows how to solve `boolToℕ _b =?= zero` or `boolToℕ _b =?= suc zero` due to `boolToℕ` being invertible.
 
-`idVecAsMaybe` supplied with a vector of length `> 1` correctly gives an error (as opposed to merely reporting that there's an unsolved meta):
+`idVecAsMaybe` supplied with a vector of length greater than `1` correctly gives an error (as opposed to merely reporting that there's an unsolved meta):
 
     -- suc _n_624 != zero of type ℕ
     _ = idVecAsMaybe (0 ∷ᵥ 1 ∷ᵥ []ᵥ)
+
+### Constructor/argument-headed functions
+
+```agda
+module ConstructorArgumentHeadedFunctions where
+  open DataConstructors
+```
+
+Recall that we've been using a weird definition of plus
+
+> because the usual one
+>
+>     _+_ : ℕ -> ℕ -> ℕ
+>     zero  + m = m
+>     suc n + m = suc (n + m)
+>
+> is subject to certain unification heuristics, which the weird one doesn't trigger.
+
+The usual definition is this one:
+
+    _+_ : ℕ -> ℕ -> ℕ
+    zero  + m = m
+    suc n + m = suc (n + m)
+
+As you can see here we return one of the arguments in the first clause and the second clause is constructor-headed. Just like for regular constructor-headed function, Agda has enhanced inference for functions of this kind as well.
+
+Quoting the changelog (TODO: add link):
+
+> Improved constraint solving for pattern matching functions
+> Constraint solving for functions where each right-hand side has a distinct rigid head has been extended to also cover the case where some clauses return an argument of the function. A typical example is append on lists:
+>
+>     _++_ : {A : Set} → List A → List A → List A
+>     []       ++ ys = ys
+>     (x ∷ xs) ++ ys = x ∷ (xs ++ ys)
+>
+> Agda can now solve constraints like ?X ++ ys == 1 ∷ ys when ys is a neutral term.
+
+Now if we come back to this example (TODO: add highlighting somehow?):
+
+> `idᵥ⁺` applied to a non-constant vector has essentially the same inference properties.
+>
+> Without specializing the implicit arguments we get yellow:
+>
+>
+>     _ = λ n m (xs : Vec ℕ (n +′ m)) -> idᵥ⁺ xs
+>
+>
+> Specializing `m` doesn't help, still yellow:
+>
+>
+>     _ = λ n m (xs : Vec ℕ (n +′ m)) -> idᵥ⁺ {m = m} xs
+>
+
+but define `idᵥ⁺` over `_+_` rather than `_+′_`:
+
+```agda
+  idᵥ⁺ : ∀ {A n m} -> Vec A (n + m) -> Vec A (n + m)
+  idᵥ⁺ xs = xs
+```
+
+then
+
+```agda
+  _ = λ n m (xs : Vec ℕ (n + m)) -> idᵥ⁺ {m = m} xs
+```
+
+type checks perfectly.
+
+And
+
+```
+  _ = λ n m (xs : Vec ℕ (n + m)) -> idᵥ⁺ xs
+```
+
+still gives yellow, because it's still ambiguous.
+
+Additionally, this now also type checks:
+
+```agda
+  _ = idᵥ⁺ {m = 0} (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
+```
+
+This is because instantiating `m` at `0` in `idᵥ⁺` makes `_+_` constructor-headed, because if we inline `m` in the definition of `_+_`, we'll get:
+
+    _+0 : ℕ -> ℕ
+    zero  +0 = zero
+    suc n +0 = suc (n +0)
+
+which is clearly constructor-headed.
+
+And
+
+```agda
+  _ = idᵥ⁺ {m = 1} (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
+```
+
+still does not type check, because inlining `m` as `1` does not make `_+_` constructor-headed:
+
+    _+1 : ℕ -> ℕ
+    zero  +1 = suc zero
+    suc n +1 = suc (n +1)
+
+## Eta-rules
+
+
 
 
 
@@ -1406,6 +1525,52 @@ https://agda.readthedocs.io/en/v2.6.0.1/language/let-and-where.html
 
 ## Pattern matching
 
+
+```agda
+module Blah where
+  data Uni : Set where
+    bool₁ bool₂ : Uni
+
+  -- record Tag {ι α} {I : Set ι} (i : I) (A : Set α) : Set α where
+  --   constructor tag
+  --   field untag : A
+  --   tagOf = ι
+
+  -- tagWith : ∀ {ι α} {I : Set ι} {A : Set α} -> (i : I) -> A -> Tag i A
+  -- tagWith _ = tag
+
+  -- ⟦_⟧ : Uni -> Set
+  -- ⟦ bool₁ ⟧ = Tag bool₁ Bool
+  -- ⟦ bool₂ ⟧ = Tag bool₂ Bool
+
+  record Bool₁ : Set where
+    constructor mkBool₁
+    field unBool₁ : Bool
+  open Bool₁
+
+  record Bool₂ : Set where
+    constructor mkBool₂
+    field unBool₂ : Bool
+  open Bool₂
+
+  ⟦_⟧ : Uni -> Set
+  ⟦ bool₁ ⟧ = Bool₁
+  ⟦ bool₂ ⟧ = Bool₂
+
+  _==Bool_ : Bool -> Bool -> Bool
+  true  ==Bool true  = true
+  false ==Bool false = true
+  _     ==Bool _     = false
+
+  _==_ : ∀ {A} -> ⟦ A ⟧ -> ⟦ A ⟧ -> Bool
+  _==_ {bool₁} x y = unBool₁ x ==Bool unBool₁ y
+  _==_ {bool₂} x y = unBool₂ x ==Bool unBool₂ y
+
+  _ : (mkBool₁ true == mkBool₁ false) ≡ false
+  _ = refl
+```
+
+
 {-
 
 record Tag {α β} {A : Set α} (B : (x : A) -> Set β) (x : A) : Set (α ⊔ β) where
@@ -1433,7 +1598,6 @@ Vector.foldl
 Mention   `_ = idᵥ⁺ {m = 0} (1 ∷ᵥ 2 ∷ᵥ []ᵥ)`
 
 
-```agda
 module ConstructorHeadedFunctions where
   open import Data.Unit.Base
   open import Data.List.Base
@@ -1514,27 +1678,8 @@ nary (suc n) A = A -> nary n A
 _ : nary _ (ℕ -> ℕ) ≡ (ℕ -> ℕ)
 _ = refl
 
-```
 
 
-## Almost constructor-headed functions
-
-Improved constraint solving for pattern matching functions
-Constraint solving for functions where each right-hand side has a distinct rigid head has been extended to also cover the case where some clauses return an argument of the function. A typical example is append on lists:
-  _++_ : {A : Set} → List A → List A → List A
-  []       ++ ys = ys
-  (x ∷ xs) ++ ys = x ∷ (xs ++ ys)
-Agda can now solve constraints like ?X ++ ys == 1 ∷ ys when ys is a neutral term.
-
-```agda
-open import Data.Vec
-
-vecPlusId : ∀ {n} m -> Vec Bool (n + m) -> Vec Bool (n + m)
-vecPlusId m xs = xs
-
-_ : ∀ {n} m -> Vec Bool (n + m) -> Vec Bool (n + m)
-_ = λ m xs -> vecPlusId m xs
-```
 
 
 ## A function is not dependent enough
