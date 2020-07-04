@@ -1348,7 +1348,7 @@ Note that `boolToℕ` defined like that:
   boolToℕ′ true  = suc zero
 ```
 
-is not considered to be constructor-headed as the second test in
+is not considered to be constructor-headed, because Agda does not attempt to unfold recursive definitions in the RHS of a clause of a function. With this definition the second test in
 
 ```agda
   idVecAsMaybe′ : ∀ {b} -> Vec ℕ (boolToℕ′ b) -> Vec ℕ (boolToℕ′ b)
@@ -1358,81 +1358,7 @@ is not considered to be constructor-headed as the second test in
   _ = idVecAsMaybe′ (0 ∷ᵥ []ᵥ)
 ```
 
-is now yellow. But not the first one. Which is weird. Can't explain that.
-
-I.e. Agda does not always reduce the rhs of the clauses of a function when checking for constructor-headedness, which is unfortunate.
-
-
-
-#### Example 3: polyvariadic `zip`
-
-```agda
-module PolyvariadicZip where
-  open import Data.List.Base as List
-  open import Data.Vec.Base as Vec renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
-```
-
-We can define this family of functions over vectors:
-
-    replicate : ∀ {n} → A → Vec A n
-    map : ∀ {n} → (A → B) → Vec A n → Vec B n
-    zipWith : ∀ {n} → (A → B → C) → Vec A n → Vec B n → Vec C n
-    zipWith3 : ∀ {n} → (A → B → C → D) → Vec A n → Vec B n → Vec C n → Vec D n
-
-(the Agda stdlib provides all functions but the last one)
-
-Can we define a generic function that covers all of the above? Its type signature should look like this:
-
-    (A₁ -> A₂ -> ... -> B) -> Vec A₁ n -> Vec A₂ n -> ... -> Vec B n
-
-Yes: we can parameterize a function by a list of types and compute those n-ary types from the list. Folding a list of types into a type, given also the type of the result, is trivial:
-
-```agda
-  ToFun : List Set -> Set -> Set
-  ToFun []       B = B
-  ToFun (A ∷ As) B = A -> ToFun As B
-```
-
-This allows us to compute the n-ary type of the function. In order to compute the n-ary type of the result we need to map the list of types with `λ A -> Vec A n` and turn `B` (the type of the resulting of the zipping function) into `Vec B n` (the type of the final result):
-
-```agda
-  ToVecFun : List Set -> Set -> ℕ -> Set
-  ToVecFun As B n = ToFun (List.map (λ A -> Vec A n) As) (Vec B n)
-```
-
-It only remains to recurse on the list of types in an auxiliary function (n-ary `(<*>)`, using Haskell jargon) and define `zipN` in terms of that function:
-
-```agda
-  apN : ∀ {As B n} -> Vec (ToFun As B) n -> ToVecFun As B n
-  apN {[]}     ys = ys
-  apN {A ∷ As} fs = λ xs -> apN {As} (fs ⊛ xs)
-
-  zipN : ∀ {As B n} -> ToFun As B -> ToVecFun As B n
-  zipN f = apN (Vec.replicate f)
-```
-
-Some tests verifying that the function does what it's supposed to:
-
-```agda
-  _ : zipN 1 ≡ (1 ∷ᵥ 1 ∷ᵥ 1 ∷ᵥ []ᵥ)
-  _ = refl
-
-  _ : zipN suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ (2 ∷ᵥ 3 ∷ᵥ 4 ∷ᵥ []ᵥ)
-  _ = refl
-
-  _ : zipN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
-  _ = refl
-```
-
-Note how we do not provide the list of types explicitly in any of these cases, even though there's pattern matching on that list.
-
-```agda
-  _ : ∀ {n} -> ToFun _ _ ≡ (ℕ -> ℕ -> ℕ)
-  _ = refl
-
-  _ : ∀ {n} -> ToVecFun _ _ n ≡ (Vec ℕ n -> Vec ℕ n -> Vec ℕ n)
-  _ = refl
-```
+is yellow. But not the first one. I guess with `idVecAsMaybe′ []ᵥ` Agda tries to unify `zero` (the actual length of the vector) with both the RHSes of `boolToℕ′` and since `zero` is definitely not equal to `suc zero`, only the `zero + zero` case remains, so Agda finally decides to reduce that expression to find out that it indeed equals to `zero`.
 
 ### Constructor/argument-headed functions
 
@@ -1495,13 +1421,13 @@ but define `idᵥ⁺` over `_+_` rather than `_+′_`:
   idᵥ⁺ xs = xs
 ```
 
-then
+then supplying only `m` explicitly:
 
 ```agda
   _ = λ n m (xs : Vec ℕ (n + m)) -> idᵥ⁺ {m = m} xs
 ```
 
-type checks perfectly.
+satisfies the type checker.
 
 And
 
@@ -1509,7 +1435,7 @@ And
   _ = λ n m (xs : Vec ℕ (n + m)) -> idᵥ⁺ xs
 ```
 
-still gives yellow, because it's still ambiguous.
+still gives yellow, because it's still inherently ambiguous.
 
 Additionally, this now also type checks:
 
@@ -1537,25 +1463,156 @@ still does not type check, because inlining `m` as `1` does not make `_+_` const
     zero  +1 = suc zero
     suc n +1 = suc (n +1)
 
-
-
-
-
-####
+#### Example 2: polyvariadic `zip`
 
 ```agda
-  1OrDouble : Bool -> ℕ -> ℕ
-  1OrDouble false n = suc zero
-  1OrDouble true  n = 0 + 0
+module PolyvariadicZip where
+  open import Data.List.Base as List
+  open import Data.Vec.Base as Vec renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
 ```
 
+We can define this family of functions over vectors:
+
+    replicate : ∀ {n} → A → Vec A n
+    map : ∀ {n} → (A → B) → Vec A n → Vec B n
+    zipWith : ∀ {n} → (A → B → C) → Vec A n → Vec B n → Vec C n
+    zipWith3 : ∀ {n} → (A → B → C → D) → Vec A n → Vec B n → Vec C n → Vec D n
+
+(the Agda stdlib provides all of those but the last one)
+
+Can we define a generic function that covers all of the above? Its type signature should look like this:
+
+    (A₁ -> A₂ -> ... -> B) -> Vec A₁ n -> Vec A₂ n -> ... -> Vec B n
+
+Yes: we can parameterize a function by a list of types and compute those n-ary types from the list. Folding a list of types into a type, given also the type of the result, is trivial:
+
 ```agda
-  _ : 1OrDouble _ 0 ≡ 1
+  ToFun : List Set -> Set -> Set
+  ToFun  []      B = B
+  ToFun (A ∷ As) B = A -> ToFun As B
+```
+
+This allows us to compute the n-ary type of the function. In order to compute the n-ary type of the result we need to map the list of types with `λ A -> Vec A n` and turn `B` (the type of the resulting of the zipping function) into `Vec B n` (the type of the final result):
+
+```agda
+  ToVecFun : List Set -> Set -> ℕ -> Set
+  ToVecFun As B n = ToFun (List.map (λ A -> Vec A n) As) (Vec B n)
+```
+
+It only remains to recurse on the list of types in an auxiliary function (n-ary `(<*>)`, using Haskell jargon) and define `zipN` in terms of that function:
+
+```agda
+  apN : ∀ {As B n} -> Vec (ToFun As B) n -> ToVecFun As B n
+  apN {[]}     ys = ys
+  apN {A ∷ As} fs = λ xs -> apN {As} (fs ⊛ xs)
+
+  zipN : ∀ {As B n} -> ToFun As B -> ToVecFun As B n
+  zipN f = apN (Vec.replicate f)
+```
+
+Some tests verifying that the function does what it's supposed to:
+
+```agda
+  _ : zipN 1 ≡ (1 ∷ᵥ 1 ∷ᵥ 1 ∷ᵥ []ᵥ)
+  _ = refl
+
+  _ : zipN suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ (2 ∷ᵥ 3 ∷ᵥ 4 ∷ᵥ []ᵥ)
+  _ = refl
+
+  _ : zipN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
   _ = refl
 ```
 
+Note how we do not provide the list of types explicitly in any of these cases, even though there's pattern matching on that list.
 
+Your first guess is probably that Agda can infer the list of types from the type of the function passed to `zipN`. I.e. the type of `_+_` is `ℕ -> ℕ -> ℕ` and so it corresponds to `Fun (ℕ ∷ ℕ ∷ []) ℕ`. But that is not really clear to Agda as this snippet:
 
+```agda
+  _ : ToFun _ _ ≡ (ℕ -> ℕ -> ℕ)
+  _ = refl
+```
+
+gives yellow. And this is for a good reason, there are three ways to compute `ℕ -> ℕ -> ℕ` with `ToFun`:
+
+    ToFun (ℕ ∷ ℕ ∷ [])  ℕ             -- The obvious one.
+    ToFun (ℕ ∷ [])     (ℕ -> ℕ)       -- A sneaky one.
+    ToFun []           (ℕ -> ℕ -> ℕ)  -- Another sneaky one.
+
+So the `ToFun _As _B =?= ℕ -> ℕ -> ℕ` unification problem does not have a single solution and hence can't be solved by Agda.
+
+However Agda sees that `zipN _+_` is applied to two vectors and the result is also a vector and since in the type signature of `zipN`:
+
+    zipN : ∀ {As B n} -> ToFun As B -> ToVecFun As B n
+
+the types of arguments and result are computed from `ToVecFun As B n`, we have the following unification problem:
+
+    ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
+
+which Agda can immediately solve as
+
+    _As := ℕ ∷ ℕ ∷ []
+    _B  := ℕ
+    _n  := m
+
+And indeed there's no yellow here:
+
+```agda
+  _ : ∀ {m} -> ToVecFun _ _ _ ≡ (Vec ℕ m -> Vec ℕ m -> Vec ℕ m)
+  _ = refl
+```
+
+The reason for that is that `ToVecFun` does not return an arbitrary `B` in the `[]` case like `ToFun` -- `ToVecFun` always returns a `Vec` in the `[]` case, so resolving metas as
+
+    _As := ℕ ∷ []
+    _B  := ℕ -> ℕ
+    _n  := m
+
+is not possible as that would compute to `Vec ℕ m -> Vec (ℕ -> ℕ) m` rather than `Vec ℕ m -> Vec ℕ m -> Vec ℕ m`.
+
+Hence there's no ambiguity now and since `ToVecFun` also returns a `_->_` in the `_∷_` case, that function is constructor-headed (as `Vec` and `_->_` are two different type constructors) and Agda knows how to infer the list of types.
+
+If we omit the resulting vector, we'll get yellow:
+
+```agda
+  _ : zipN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+  _ = refl
+
+```
+
+as a standlone
+
+    ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> _R
+
+is inherently ambiguous again and Agda would need to do some non-trivial proof search in order to realize that `_R` can't be an `_->_` due to the other equation:
+
+    ToFun _As _B =?= ℕ -> ℕ -> ℕ
+
+Omitting an argument also results in metas not being resolved:
+
+```agda
+  _ : zipN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) _ ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
+  _ = refl
+```
+
+but that is something that I can't explain, I can't spot any problem with solving
+
+    ToVecFun _As _B _n ≡ (Vec ℕ m -> _ -> Vec ℕ m)
+
+with
+
+    _As := Vec ℕ m ∷ Vec ℕ m ∷ []
+    _B  := Vec ℕ m
+    _n  := m
+
+Note also that constructor-headedness is compositional. The
+
+    ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
+
+problem expands to
+
+    ToFun (List.map (λ A -> Vec A n) _As) (Vec _B _n) =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
+
+Agda sees that the RHS was computed from the `_∷_` case of `ToFun`, but the actual argument of `ToFun` is not a `_∷_`, it's a `List.map (λ A -> Vec A n) _As` and so Agda needs to invert `List.map` for unification to proceed. Which is no problem, since `List.map` is also constructor-headed.
 
 ## Eta-rules
 
@@ -1623,6 +1680,11 @@ Supporting eta-equality for sum types is possible in theory (TODO: link), but Ag
 (which is always isomorphic to `Data.Empty.⊥` and is how `⊥` is defined in the first place).
 
 Eta-rules for records may seem not too exciting, but there are a few important use cases.
+
+
+
+
+
 
 ### Computing predicates
 
@@ -2375,3 +2437,44 @@ test : crescendo (s (s (s z))) ≡ (Set₀ -> Set₁ -> Set₂ -> Set₃)
 test = refl
 
 ```
+
+
+
+
+
+
+####
+
+  1OrDouble : Bool -> ℕ -> ℕ
+  1OrDouble false n = suc zero
+  1OrDouble true  n = 0 + 0
+
+  _ : 1OrDouble _ 0 ≡ 1
+  _ = refl
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  idDeep : ℕ -> Set -> Set
+  idDeep  zero   B = B
+  idDeep (suc n) B = idDeep n B
+
+  ToFun′ : List Set -> Set -> Set
+  ToFun′  []      B = idDeep 5 B
+  ToFun′ (A ∷ As) B = A -> ToFun′ As B
+
+  ToVecFun′ : List Set -> Set -> ℕ -> Set
+  ToVecFun′ As B n = ToFun′ (List.map (λ A -> Vec A n) As) (Vec B n)
+
+  _ : ∀ {m} -> ToVecFun′ _ _ _ ≡ (Vec ℕ m -> Vec ℕ m -> Vec ℕ m)
+  _ = refl
