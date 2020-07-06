@@ -11,9 +11,21 @@ Agda is a wonderful language and its unification engines are exemplary, practica
 - unification used for getting convenient and powerful pattern matching
 - unification used for inferring values of implicit arguments
 
-These are two completely distinct machineries. This post covers only the latter, because the former is already elaborated in detail (and implemented) by Jesper Cockx: see his exceptionally well-writted [PhD thesis](https://jesper.sikanda.be/files/thesis-final-digital.pdf) -- it's an entire high-quality book! Section "3.6 Related work" of it shortly describes differences between the requirements for the two unifications engines.
+These are two completely distinct machineries. This tutorial covers only the latter, because the former is already elaborated in detail (and implemented) by Jesper Cockx: see his exceptionally well-writted [PhD thesis](https://jesper.sikanda.be/files/thesis-final-digital.pdf) -- it's an entire high-quality book. Section "3.6 Related work" of it shortly describes differences between the requirements for the two unifications engines.
 
-Agda only infers values that are uniquely determined by the current context. I.e. Agda doesn't try to guess: it either fails to infer a value or infers _the_ definite one. Even though this makes the unification algorithm weaker than it could be, it also makes it reliable and predictable. Whenever Agda infers something, you can be sure that this is the thing that you wanted and not just a random guess that would be different if you provided more information to the type checker (but Agda does have a guessing machinery called [Agsy](https://agda.readthedocs.io/en/v2.6.0.1/tools/auto.html) that can be used interactively, so that no guessing needs to be done by the type checker and everything inferred is visible to the user).
+This tutorial primarily targets
+
+- users of Agda who want to understand how to write code to make more things inferrable
+- a general audience curious about dependent types and what can be done with them
+- people implementing powerful dependently typed languages (most of what is described here are tricks that I use in may day-to-day work (when it involves Agda) and I'd definitely want to see them available in languages that are yet to come)
+
+Higher-order unification is not covered. It's a highly advanced topic and from the user's perspective diving into higher-order unification has a rather big cost/benefit ratio: I don't remember tweaking my code to fit it into the pattern fragment or doing anything else of this kind to help Agda unify things in the higher-order case. Agda would barely be usable without the built-in higher-order unification, but it's mostly invisible to the user and just works.
+
+Analogously, no attempt to dissect Agda's internals is performed. Agda is well-designed enough not to force the user to worry about the peculiarities of the implementation (like when something gets postponed or in what order equations get solved). If you do want to learn about the internals, I recommend reading [Type checking in the presence of meta-variables](https://www.researchgate.net/publication/228571999_Type_checking_in_the_presence_of_meta-variables) and [Higher-Order Dynamic Pattern Unification for Dependent Types and Records](www.cse.chalmers.se/~abela/unif-sigma-long.pdf).
+
+## Intro
+
+Agda only infers values that are uniquely determined by the current context. I.e. Agda doesn't try to guess: it either fails to infer a value or infers the definitive one. Even though this makes the unification algorithm weaker than it could be, it also makes it reliable and predictable. Whenever Agda infers something, you can be sure that this is the thing that you wanted and not just a random guess that would be different if you provided more information to the type checker (but Agda does have a guessing machinery called [Agsy](https://agda.readthedocs.io/en/v2.6.0.1/tools/auto.html) that can be used interactively, so that no guessing needs to be done by the type checker and everything inferred is visible to the user).
 
 We'll look into basics of type inference in Agda and then move to more advanced patterns. But first, some imports:
 
@@ -1540,11 +1552,11 @@ gives yellow. And this is for a good reason, there are three ways to compute `�
 
 So the `ToFun _As _B =?= ℕ -> ℕ -> ℕ` unification problem does not have a single solution and hence can't be solved by Agda.
 
-However Agda sees that `zipN _+_` is applied to two vectors and the result is also a vector and since in the type signature of `zipN`:
+However Agda sees that `zipN _+_` is applied to two vectors and the result is also a vector and since in the type signature of `zipN`
 
     zipN : ∀ {As B n} -> ToFun As B -> ToVecFun As B n
 
-the types of arguments and result are computed from `ToVecFun As B n`, we have the following unification problem:
+the types of the arguments and the result are computed from `ToVecFun As B n`, we have the following unification problem:
 
     ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
 
@@ -1612,7 +1624,7 @@ problem expands to
 
     ToFun (List.map (λ A -> Vec A n) _As) (Vec _B _n) =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
 
-Agda sees that the RHS was computed from the `_∷_` case of `ToFun`, but the actual argument of `ToFun` is not a `_∷_`, it's a `List.map (λ A -> Vec A n) _As` and so Agda needs to invert `List.map` for unification to proceed. Which is no problem, since `List.map` is also constructor-headed.
+Agda sees that the RHS was computed from the `_∷_` case of `ToFun`, but the actual argument of `ToFun` is not a meta or a `_∷_` already, it's a `List.map (λ A -> Vec A n) _As` and so Agda needs to invert `List.map` for unification to proceed. Which is no problem, since `List.map` is also constructor-headed.
 
 ## Eta-rules
 
@@ -2055,8 +2067,6 @@ n -⁺ im = n ∸ ¡ im
 ## Higher-order dynamic pattern unification
 
 http://adam.gundry.co.uk/pub/pattern-unify/
-www.cse.chalmers.se/~abela/unif-sigma-long.pdf
-https://www.researchgate.net/publication/228571999_Type_checking_in_the_presence_of_meta-variables
 
 Ulf Norell. [Towards a practical programming language based on dependent type theory](http://www.cse.chalmers.se/~ulfn/papers/thesis.html). PhD thesis, 2007.
 
