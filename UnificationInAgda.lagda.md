@@ -59,7 +59,7 @@ Some preliminaries: the type of lists is defined as
 
 Agda sees `[]` as having the following type: `∀ {A} -> List A`, however if you ask Agda what the type of `[]` is (by creating a hole in this module via `_ = ?`, putting there `[]` and typing `C-c C-d`. Or you can open the current module via `open BasicsOfTypeInference` and type `C-c C-d []` without introducing a hole), you'll get something like
 
-    List _A_42
+      List _A_42
 
 (where `42` is some arbitrary number that Agda uses to distinguish between variables that have identical textual names, but are bound in distinct places)
 
@@ -69,8 +69,8 @@ In contrast, Haskell is perfectly fine with `[]` and infers its type as `forall 
 
 So Agda and Haskell think of `[]` having the same type
 
-    ∀ {A} -> List A  -- in Agda
-    forall a. [a]    -- in Haskell
+      ∀ {A} -> List A  -- in Agda
+      forall a. [a]    -- in Haskell
 
 but Haskell infers this type on the top level unlike Agda which expects `A` to be either resolved or explicitly bound.
 
@@ -86,7 +86,7 @@ This definition is accepted, which means that Agda inferred its type successfull
 
 Note that
 
-    _ {A} = [] {A}
+      _ {A} = [] {A}
 
 means the same thing as the previous expression, but doesn't type check. It's just a syntactic limitation: certain things are allowed in patterns but not in lambdas and vice versa.
 
@@ -105,8 +105,8 @@ Type inference works not only with lambdas binding implicit arguments, but also 
 is the regular `id` function, which is spelled as
 
 ```haskell
-id :: forall a. a -> a
-id x = x
+  id :: forall a. a -> a
+  id x = x
 ```
 
 in Haskell.
@@ -158,8 +158,8 @@ In Agda bindings that are not marked with `abstract` are transparent, i.e. writi
 Unlike Haskell Agda does not have let-generalization, i.e. this valid Haskell code:
 
 ```haskell
-p :: (Bool, Integer)
-p = let i x = x in (i True, i 1)
+  p :: (Bool, Integer)
+  p = let i x = x in (i True, i 1)
 ```
 
 has to be written either with an explicit type signature for `i`:
@@ -183,18 +183,18 @@ So Agda infers polymorphic types neither on the top level nor locally.
 
 In Haskell types of bindings can be inferred from how those bindings are used later. E.g. the inferred type of a standalone
 
-    one = 1
+      one = 1
 
 is `Integer` (see [monomorphism restriction](https://wiki.haskell.org/Monomorphism_restriction)), but in
 
-    one = 1
-    one' = one :: Word
+      one = 1
+      one' = one :: Word
 
 the inferred type of `one` is `Word` rather than `Integer`.
 
 This is not the case in Agda, e.g. a type for
 
-    i = λ x -> x
+      i = λ x -> x
 
 is not going to be inferred regardless of how this definition is used later. However if you use `let`, `where` or `mutual` inference is possible:
 
@@ -218,14 +218,14 @@ module UnderspecifiedArgument where
 
 Another difference between Haskell and Agda is that Agda doesn't allow to leave ambiguous types. Consider a classic example: the `I` combinator can be defined in terms of the `S` and `K` combinators. In Haskell we can express that as
 
-    k :: a -> b -> a
-    k x y = x
+      k :: a -> b -> a
+      k x y = x
 
-    s :: (a -> b -> c) -> (a -> b) -> a -> c
-    s f g x = f x (g x)
+      s :: (a -> b -> c) -> (a -> b) -> a -> c
+      s f g x = f x (g x)
 
-    i :: a -> a
-    i = s k k
+      i :: a -> a
+      i = s k k
 
 and [it'll type check](https://ideone.com/mZQM1f). However the Agda's equivalent
 
@@ -242,7 +242,7 @@ and [it'll type check](https://ideone.com/mZQM1f). However the Agda's equivalent
 
 results in the last `K` being highlighted with yellow (which means that not all metavariables were resolved). To see why, let's reduce `S K K` a bit:
 
-    λ x -> K x (K x)
+      λ x -> K x (K x)
 
 this computes to `λ x -> x` as expected, but the problem is that in the expression above the `K x` argument is underspecified: a `K` must receive a particular `B`, but we neither explicitly specify a `B`, nor can it be inferred from the context as the entire `K x` argument is thrown away by the outer `K`.
 
@@ -271,9 +271,9 @@ Unrestricted pattern matching generally breaks type inference. Take for instance
 
 which is a direct counterpart of Haskell's
 
-    isZero = \case
-        0 -> True
-        _ -> False
+      isZero = \case
+          0 -> True
+          _ -> False
 
 
 Agda colors the entire snippet in yellow meaning it's unable to resolve the generated metavariables. "What's the problem? The inferred type should be just `ℕ -> Bool`" -- you might think. Such a type works indeed:
@@ -298,11 +298,11 @@ But here's another thing that works:
 
 Recall that we're in a dependently typed language and here the type of the result of a function can depend on the argument of that function. And both the
 
-    ℕ -> Bool
+      ℕ -> Bool
 
-    (n : ℕ) -> n & λ where
-                       zero -> Bool
-                       _    -> Bool
+      (n : ℕ) -> n & λ where
+                         zero -> Bool
+                         _    -> Bool
 
 types are correct for that function. Even though they are "morally" the same, they are not definitionally equal and there's a huge difference between them: the former one doesn't have a dependency and the latter one has.
 
@@ -316,7 +316,7 @@ There is a way to tell Agda that pattern matching is non-dependent: use `case-of
 
 type checks. `case_of_` is just a definition in the standard library that at the term level is essentially
 
-    case x of f = f x
+      case x of f = f x
 
 and at the type level it restricts the type of `f` to be a non-dependent function.
 
@@ -366,15 +366,15 @@ Since tuples are dependent, this
 
 results in unresolved metas as all of these
 
-    ℕ × ℕ
+      ℕ × ℕ
 
-    Σ ℕ λ where
-            zero -> ℕ
-            _    -> ℕ
+      Σ ℕ λ where
+              zero -> ℕ
+              _    -> ℕ
 
-    Σ ℕ λ where
-            1 -> ℕ
-            _ -> Bool
+      Σ ℕ λ where
+              1 -> ℕ
+              _ -> Bool
 
 are valid types for this expression, which is similar to what we've considered in the previous section, except here not all of the types are "morally the same": the last one is very different to the first two.
 
@@ -403,17 +403,17 @@ The following definitions type check:
 
 reassuring that Agda's type checker is not based on some simple bidirectional typing rules (if you're not familier with those, see [Bidirectional Typing Rules: A Tutorial](http://www.davidchristiansen.dk/tutorials/bidirectional.pdf), but the type checker does have a bidirectional interface ([`inferExpr`](https://hackage.haskell.org/package/Agda-2.6.1/docs/Agda-TheTypeChecker.html#v:inferExpr) & [`checkExpr`](https://hackage.haskell.org/package/Agda-2.6.1/docs/Agda-TheTypeChecker.html#v:checkExpr)) where type inference is defined in terms of type checking for the most part:
 
-    -- | Infer the type of an expression. Implemented by checking against a meta variable. <...>
-    inferExpr :: A.Expr -> TCM (Term, Type)
+      -- | Infer the type of an expression. Implemented by checking against a meta variable. <...>
+      inferExpr :: A.Expr -> TCM (Term, Type)
 
 which means that any definition of the following form:
 
-    name = term
+      name = term
 
 can be equally written as
 
-    name : _
-    name = term
+      name : _
+      name = term
 
 since Agda elaborates `_` to a fresh metavariable and then type checks `term` againt it, which amounts to unifying the inferred type of `term` with the meta. If the inferred type doesn't contain metas itself, then the meta standing for `_` is resolved as that type and the definition is accepted. So type inference is just a particular form of unification.
 
@@ -474,13 +474,13 @@ As we've just seen implicit arguments and metavariable are closely related. Agda
 
 For example, it may come as a surprise, but
 
-    _ : ∀ {A : Set} -> A -> A
-    _ = λ {A : Set} x -> x
+      _ : ∀ {A : Set} -> A -> A
+      _ = λ {A : Set} x -> x
 
 gives a type error. This is because Agda greedily binds implicits, so the `A` at the term level gets automatically bound on the lhs (left-hand side, i.e. before `=`), which gives you
 
-    _ : ∀ {A : Set} -> A -> A
-    _ {_} = <your_code_goes_here>
+      _ : ∀ {A : Set} -> A -> A
+      _ {_} = <your_code_goes_here>
 
 where `{_}` stands for `{A}`. So you can't bind `A` by a lambda, because it's already silently bound for you. Although it's impossible to reference that type variable unless you explicitly name it as in
 
@@ -582,28 +582,28 @@ The implicit `A` gets inferred here: since all elements of a list have the same 
 
 In Haskell it's also the case that `a` is inferrable form a `[a]`: when the programmer writes
 
-    sort :: Ord a => [a] -> [a]
+      sort :: Ord a => [a] -> [a]
 
 Haskell is always able to infer `a` from the given list (provided `a` is known at the call site: `sort []` is as meaningless in Haskell as it is in Agda) and thus figure out what the appropriate `Ord a` instance is. However, another difference between Haskell and Agda is that whenever Haskell sees that some implicit variables (i.e. those bound by `forall <list_of_vars> .`) can't be inferred in the general case, Haskell, unlike Agda, will complain. E.g. consider the following piece of code:
 
-    {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, TypeFamilies #-}
+      {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, TypeFamilies #-}
 
-    class C a b where
-      f :: a -> Int
+      class C a b where
+        f :: a -> Int
 
-    instance b ~ () => C Bool b where
-      f _ = 0
+      instance b ~ () => C Bool b where
+        f _ = 0
 
-    main = print $ f True
+      main = print $ f True
 
 Even though at the call site (`f True`) `b` is determined via the `b ~ ()` constraint of the `C Bool b` instance and so there is no ambiguity, Haskell still complains about the definition of the `C` class itself:
 
-    • Could not deduce (C a b0)
-      from the context: C a b
-        bound by the type signature for:
-                   f :: forall a b. C a b => a -> Int
-        at prog.hs:6:3-15
-      The type variable ‘b0’ is ambiguous
+      • Could not deduce (C a b0)
+        from the context: C a b
+          bound by the type signature for:
+                     f :: forall a b. C a b => a -> Int
+          at prog.hs:6:3-15
+        The type variable ‘b0’ is ambiguous
 
 The type of the `f` function mentions the `b` variable in the `C a b` constraint, but that variable is not mentioned anywhere else and hence can't be inferred in the general case, so Haskell complains, because by default it wants all type variables to be inferrable upfront regardless of whether at the call site it would be possible to infer a variable in some cases or not. We can override the default behavior by enabling the `AllowAmbiguousTypes` extension, which makes the code type check without any additional changes.
 
@@ -655,22 +655,22 @@ Similarly, when the user writes
 4. `List _A` (this time the type of the result that `listId` returns) also gets unified with the expected type, which is `ℕ -> ℕ`, because `suc` prepended to the result of the `listId` application is of this type
 5. we get the following [unification problem](https://en.wikipedia.org/wiki/Unification_(computer_science)#Unification_problem,_solution_set) consisting of two equations:
 
-       List _A =?= List (_B -> _B)
-       List _A =?= List (ℕ -> ℕ)
+         List _A =?= List (_B -> _B)
+         List _A =?= List (ℕ -> ℕ)
 
 6. as before we can simplify the equations by stripping `List`s from both the sides of each of them:
 
-       _A =?= _B -> _B
-       _A =?= ℕ -> ℕ
+         _A =?= _B -> _B
+         _A =?= ℕ -> ℕ
 
 7. the second equation gives us `A := ℕ -> ℕ` and it only remains to solve
 
-       ℕ -> ℕ =?= _B -> _B
+         ℕ -> ℕ =?= _B -> _B
 
 8. which is easy: `_B := ℕ`. The full solution of the unification problem is
 
-       _B := ℕ
-       _A := ℕ -> ℕ
+         _B := ℕ
+         _A := ℕ -> ℕ
 
 ### Example 3
 
@@ -686,15 +686,15 @@ When the user writes
 4. `List _A` (this time the type of the result that `listId` returns) also gets unified with the expected type, which is `ℕ -> ℕ`, because `suc` prepended to the result of the `listId` application is of this type
 5. we get the following unification problem consisting of two equations:
 
-       List _A =?= _LA
-       List _A =?= List (ℕ -> ℕ)
+         List _A =?= _LA
+         List _A =?= List (ℕ -> ℕ)
 
 6. `_A` gets solved as `_A := ℕ -> ℕ`
 7. and `_LA` gets solved as `_LA := List (ℕ -> ℕ)`
 8. so the final solution is
 
-       _A := ℕ -> ℕ
-       _LA := List (ℕ -> ℕ)
+         _A := ℕ -> ℕ
+         _LA := List (ℕ -> ℕ)
 
 But note that we could first resolve `_LA` as `List _A`, then resolve `_A` and then instantiate it in `List _A` (what `_LA` was resolved to), which would give us the same final solution.
 
@@ -712,28 +712,28 @@ We'll denote "`X` does not uniquely determine `Y`" as `X !⇉ Y`.
 
 We'll also abbreviate
 
-    X ⇉ Y₁
-    X ⇉ Y₂
-    ...
-    X ⇉ yₙ
+      X ⇉ Y₁
+      X ⇉ Y₂
+      ...
+      X ⇉ yₙ
 
 as
 
-    X ⇉ Y₁ , Y₂ ... Yₙ
+      X ⇉ Y₁ , Y₂ ... Yₙ
 
 (and similarly for `!⇉`).
 
 We'll denote "`X` can be determined in the current context" by
 
-    ⇉ X
+      ⇉ X
 
 Finally, we'll have derivitation trees like
 
-    X        Y
-    →→→→→→→→→→
-      Z₁ , Z₂        A
-      →→→→→→→→→→→→→→→→
-             B
+      X        Y
+      →→→→→→→→→→
+        Z₁ , Z₂        A
+        →→→→→→→→→→→→→→→→
+               B
 
 which reads as "if `X` and `Y` are determined in the current context, then it's possible to determine `Z₁` and `Z₂`, having which together with `A` determined in the current context, is enough to determine `B`".
 
@@ -759,13 +759,13 @@ Unfortunately applying `fId` to a list without explicitly instantiating `F` as `
 
 results in both `F` and `A` not being resolved. This might be surprising, but there is a good reason for this behavior: there are multiple ways `F` and `A` can be instantiated, so Agda doesn't attempt to pick a random one. Here's the solution that the user would probably have had in their mind:
 
-    _F := List
-    _A := ℕ
+      _F := List
+      _A := ℕ
 
 but this one is also valid:
 
-    _F := λ _ -> List ℕ
-    _A := Bool
+      _F := λ _ -> List ℕ
+      _A := Bool
 
 i.e. `F` ignores `A` and just returns `List ℕ`:
 
@@ -785,14 +785,14 @@ Therefore, `F A` (where `F` is a type variable) uniquely determines neither `F` 
 
 A type application of a variable is injective in Haskell. I.e. unification of `f a` and `g b` (where `f` and `g` are type variables) forces unification of `a` and `b`, as well as unification of `f` and `g`. I.e. not only does `f a ⇉ a` hold for arbitrary type variable `f`, but also `f a ⇉ f`. This makes it possible to define functions like
 
-    fmap :: Functor f => (a -> b) -> f a -> f b
+      fmap :: Functor f => (a -> b) -> f a -> f b
 
 and use them without compulsively specifying `f` at the call site each time.
 
 Haskell is able to infer `f`, because no analogue of Agda's `λ _ -> List ℕ` is possible in Haskell as its surface language doesn't have type lambdas. You can't pass a type family as `f` either. Therefore there exists only one solution for "unify `f a` with `List Int`" in Haskell and it's the expected one:
 
-    f := List
-    a := Int
+      f := List
+      a := Int
 
 For a type family `F` we have `F a !⇉ a` (just like in Agda), unless `F` is an [injective type family](https://gitlab.haskell.org/ghc/ghc/wikis/injective-type-families).
 
@@ -822,7 +822,7 @@ I.e. we require an input vector to have at least one element and return that fir
 
 `n` can be left implicit, because `suc n ⇉ n`. In general, for a constructor `C` the following holds:
 
-    C x₁ x₂ ... xₙ ⇉ x₁ , x₂ ... xₙ
+      C x₁ x₂ ... xₙ ⇉ x₁ , x₂ ... xₙ
 
 A simple test:
 
@@ -874,23 +874,23 @@ Note that Agda looks under lambdas when reducing an expression, so for example `
 
 Note also that Agda does not look under pattern matching lambdas, so for example these two functions
 
-    λ{ zero -> zero; (suc n) -> 1 + n }
-    λ{ zero -> zero; (suc n) -> suc n }
+      λ{ zero -> zero; (suc n) -> 1 + n }
+      λ{ zero -> zero; (suc n) -> suc n }
 
 are not considered definitionally equal. In fact, even
 
-    _ : _≡_ {A = ℕ -> ℕ}
-        (λ{ zero -> zero; (suc n) -> suc n })
-        (λ{ zero -> zero; (suc n) -> suc n })
-    _ = refl
+      _ : _≡_ {A = ℕ -> ℕ}
+          (λ{ zero -> zero; (suc n) -> suc n })
+          (λ{ zero -> zero; (suc n) -> suc n })
+      _ = refl
 
 is an error despite the two functions being syntactically equal. Here's the funny error:
 
-    (λ { zero → zero ; (suc n) → suc n }) x !=
-    (λ { zero → zero ; (suc n) → suc n }) x of type ℕ
-    when checking that the expression refl has type
-    (λ { zero → zero ; (suc n) → suc n }) ≡
-    (λ { zero → zero ; (suc n) → suc n })
+      (λ { zero → zero ; (suc n) → suc n }) x !=
+      (λ { zero → zero ; (suc n) → suc n }) x of type ℕ
+      when checking that the expression refl has type
+      (λ { zero → zero ; (suc n) → suc n }) ≡
+      (λ { zero → zero ; (suc n) → suc n })
 
 ## Pattern matching
 
@@ -907,9 +907,9 @@ module WeirdPlus where
 
 because the usual one
 
-    _+_ : ℕ -> ℕ -> ℕ
-    zero  + m = m
-    suc n + m = suc (n + m)
+      _+_ : ℕ -> ℕ -> ℕ
+      zero  + m = m
+      suc n + m = suc (n + m)
 
 is subject to certain unification heuristics, which the weird one doesn't trigger.
 
@@ -951,7 +951,7 @@ Specifying `m` instead of `n` won't work though:
 
 Agda can't resolve `_n`. This is because `_+′_` is defined by pattern matching on its first variable, so `1 +′ m` reduces to `suc m`, but `n +′ 1` is stuck and doesn't reduce to anything when `n` is a variable/metavariable/any stuck term. So even though there's a single solution to the
 
-    n +′ 1 =?= 2
+      n +′ 1 =?= 2
 
 unification problem, Agda is not able to come up with it, because this would require arbitrary search in the general case and Agda's unification machinery carefully avoids any such strategies.
 
@@ -986,11 +986,11 @@ So we have the following rule of thumb: whenever the type of function `h` mentio
 
 `idᵥ⁺` mentions `_+′_` in its type:
 
-    idᵥ⁺ : ∀ {A n m} -> Vec A (n +′ m) -> Vec A (n +′ m)
+      idᵥ⁺ : ∀ {A n m} -> Vec A (n +′ m) -> Vec A (n +′ m)
 
 and `_+′_` pattern matches on `n`, hence Agda won't be able to infer `n`, i.e. the user will have to provide and so it should be made explicit:
 
-    idᵥ⁺ : ∀ {A m} n -> Vec A (n +′ m) -> Vec A (n +′ m)
+      idᵥ⁺ : ∀ {A m} n -> Vec A (n +′ m) -> Vec A (n +′ m)
 
 At the same time `_+′_` doesn't match on its second argument, `m`, hence we leave it implicit.
 
@@ -998,10 +998,10 @@ At the same time `_+′_` doesn't match on its second argument, `m`, hence we le
 
 A function mentioning `_∸_`
 
-    _-_ : ℕ -> ℕ -> ℕ
-    n     - zero  = n
-    zero  - suc m = zero
-    suc n - suc m = n - m
+      _-_ : ℕ -> ℕ -> ℕ
+      n     - zero  = n
+      zero  - suc m = zero
+      suc n - suc m = n - m
 
 at type level has to receive both the arguments that get fed to `_∸_` explicitly as `_∸_` matches on both of them:
 
@@ -1027,9 +1027,9 @@ is accepted unlike
 
 A function mentioning `_*_`
 
-    _*_ : ℕ -> ℕ -> ℕ
-    zero  * m = zero
-    suc n * m = m + n * m
+      _*_ : ℕ -> ℕ -> ℕ
+      zero  * m = zero
+      suc n * m = m + n * m
 
 at the type level has to receive both the arguments that get fed to `_*_` explicitly, even though `_*_` doesn't directly match on `m`. This is because in the second clause `_*_` expands to `_+_`, which does match on `m`. So it's
 
@@ -1080,11 +1080,11 @@ In the following definition we have multiple mentions of `_+′_` at the type le
 
 and three variables used as arguments to `_+′_`, yet only the `n` variable needs to be bound explicitly. This is due to the fact that it's enough to know `n` to determine what `m` is (from `Vec ℕ (n +′ m)`) and then knowing both `n` and `m` is enough to determine what `p` is (from `Vec ℕ (n +′ (m +′ p))`). Which can be written as
 
-         n
-         →
-    n    m
-    →→→→→→
-       p
+           n
+           →
+      n    m
+      →→→→→→
+         p
 
 Note that the order of the `Vec` arguments doesn't matter, Agda will postpone resolving a metavariable until there is enough info to resolve it.
 
@@ -1105,11 +1105,11 @@ A very similar example:
 
 Just like in the previous case it's enough to provide only `n` explicitly as the same
 
-         n
-         →
-    n    m
-    →→→→→→
-       p
+           n
+           →
+      n    m
+      →→→→→→
+         p
 
 logic applies. Test:
 
@@ -1165,9 +1165,9 @@ module Generalization where
 
 In general: given a function `f` that receives `n` arguments on which there's pattern matching anywhere in the definition of `f` (including calls to other functions in the body of `f`) and `m` arguments on which there is no pattern matching, we have the following rule (for simplicity of presentation we place `pᵢ` before `xⱼ`, but the same rule works when they're interleaved)
 
-    p₁    ...    pₙ        (f p₁ ... pₙ x₁ ... xₘ)
-    →→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→
-                  x₁    ...    xₘ
+      p₁    ...    pₙ        (f p₁ ... pₙ x₁ ... xₘ)
+      →→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→
+                    x₁    ...    xₘ
 
 i.e. if every `pᵢ` can be inferred from the current context, then every `xⱼ` can be inferred from `f p₁ ... pₙ x₁ ... xₘ`.
 
@@ -1207,15 +1207,15 @@ does not require the user to provide `b` explicitly, i.e. the following type che
 
 This works as follows: the expected type of an argument (`ListOfBoolOrℕ′ _b`) gets unified with the actual one (`List ℕ`):
 
-    ListOfBoolOrℕ′ _b =?= List ℕ
+      ListOfBoolOrℕ′ _b =?= List ℕ
 
 after expanding `ListOfBoolOrℕ′` we get
 
-    List (BoolOrℕ _b) =?= List ℕ
+      List (BoolOrℕ _b) =?= List ℕ
 
 as usual `List` gets stripped from both the sides of the equation:
 
-    BoolOrℕ _b =?= ℕ
+      BoolOrℕ _b =?= ℕ
 
 and here Agda has a special rule, quoting the wiki:
 
@@ -1223,17 +1223,17 @@ and here Agda has a special rule, quoting the wiki:
 
 In our case two "constructor heads" in the definition of `BoolOrℕ` are `Bool` and `ℕ`, which are distinct, and that makes Agda see that `BoolOrℕ` is injective, so unifying `BoolOrℕ _b` with `ℕ` amounts to finding the clause where `ℕ` is returted from `BoolOrℕ`, which is
 
-    BoolOrℕ true  = ℕ
+      BoolOrℕ true  = ℕ
 
 and this determines that for the result to be `ℕ` the value of `_b` must be `true`, so the unification problem gets solved as
 
-    _b := true
+      _b := true
 
 `BoolOrℕ` differs from
 
-    ListOfBoolOrℕ : Bool -> Set
-    ListOfBoolOrℕ false = List Bool
-    ListOfBoolOrℕ true  = List ℕ
+      ListOfBoolOrℕ : Bool -> Set
+      ListOfBoolOrℕ false = List Bool
+      ListOfBoolOrℕ true  = List ℕ
 
 in that the latter definition has the same head in both the clauses (`List`) and so the heuristic doesn't apply. Even though Agda really could have figured out that `ListOfBoolOrℕ` is also injective. I.e. the fact that `ListOfBoolOrℕ` is not consdered invertible is more of an implementation detail than a theoretical limination.
 
@@ -1349,8 +1349,8 @@ as Agda knows how to solve `boolToℕ _b =?= zero` or `boolToℕ _b =?= suc zero
 
 `idVecAsMaybe` supplied with a vector of length greater than `1` correctly gives an error (as opposed to merely reporting that there's an unsolved meta):
 
-    -- suc _n_624 != zero of type ℕ
-    _ = idVecAsMaybe (0 ∷ᵥ 1 ∷ᵥ []ᵥ)
+      -- suc _n_624 != zero of type ℕ
+      _ = idVecAsMaybe (0 ∷ᵥ 1 ∷ᵥ []ᵥ)
 
 Note that `boolToℕ` defined like that:
 
@@ -1383,17 +1383,17 @@ Recall that we've been using a weird definition of plus
 
 > because the usual one
 >
->     _+_ : ℕ -> ℕ -> ℕ
->     zero  + m = m
->     suc n + m = suc (n + m)
+>       _+_ : ℕ -> ℕ -> ℕ
+>       zero  + m = m
+>       suc n + m = suc (n + m)
 >
 > is subject to certain unification heuristics, which the weird one doesn't trigger.
 
 The usual definition is this one:
 
-    _+_ : ℕ -> ℕ -> ℕ
-    zero  + m = m
-    suc n + m = suc (n + m)
+      _+_ : ℕ -> ℕ -> ℕ
+      zero  + m = m
+      suc n + m = suc (n + m)
 
 As you can see here we return one of the arguments in the first clause and the second clause is constructor-headed. Just like for regular constructor-headed function, Agda has enhanced inference for functions of this kind as well.
 
@@ -1402,9 +1402,9 @@ Quoting the [changelog](https://github.com/agda/agda/blob/064095e14042bdf64c7d7c
 > Improved constraint solving for pattern matching functions
 > Constraint solving for functions where each right-hand side has a distinct rigid head has been extended to also cover the case where some clauses return an argument of the function. A typical example is append on lists:
 >
->     _++_ : {A : Set} → List A → List A → List A
->     []       ++ ys = ys
->     (x ∷ xs) ++ ys = x ∷ (xs ++ ys)
+>       _++_ : {A : Set} → List A → List A → List A
+>       []       ++ ys = ys
+>       (x ∷ xs) ++ ys = x ∷ (xs ++ ys)
 >
 > Agda can now solve constraints like ?X ++ ys == 1 ∷ ys when ys is a neutral term.
 
@@ -1453,9 +1453,9 @@ Additionally, this now also type checks:
 
 This is because instantiating `m` at `0` in `idᵥ⁺` makes `_+_` constructor-headed, because if we inline `m` in the definition of `_+_`, we'll get:
 
-    _+0 : ℕ -> ℕ
-    zero  +0 = zero
-    suc n +0 = suc (n +0)
+      _+0 : ℕ -> ℕ
+      zero  +0 = zero
+      suc n +0 = suc (n +0)
 
 which is clearly constructor-headed.
 
@@ -1467,9 +1467,9 @@ And
 
 still does not type check, because inlining `m` as `1` does not make `_+_` constructor-headed:
 
-    _+1 : ℕ -> ℕ
-    zero  +1 = suc zero
-    suc n +1 = suc (n +1)
+      _+1 : ℕ -> ℕ
+      zero  +1 = suc zero
+      suc n +1 = suc (n +1)
 
 #### Example 2: polyvariadic `zip`
 
@@ -1481,16 +1481,16 @@ module PolyvariadicZip where
 
 We can define this family of functions over vectors:
 
-    replicate : ∀ {n} → A → Vec A n
-    map : ∀ {n} → (A → B) → Vec A n → Vec B n
-    zipWith : ∀ {n} → (A → B → C) → Vec A n → Vec B n → Vec C n
-    zipWith3 : ∀ {n} → (A → B → C → D) → Vec A n → Vec B n → Vec C n → Vec D n
+      replicate : ∀ {n} → A → Vec A n
+      map : ∀ {n} → (A → B) → Vec A n → Vec B n
+      zipWith : ∀ {n} → (A → B → C) → Vec A n → Vec B n → Vec C n
+      zipWith3 : ∀ {n} → (A → B → C → D) → Vec A n → Vec B n → Vec C n → Vec D n
 
 (the Agda stdlib provides all of those but the last one)
 
 Can we define a generic function that covers all of the above? Its type signature should look like this:
 
-    (A₁ -> A₂ -> ... -> B) -> Vec A₁ n -> Vec A₂ n -> ... -> Vec B n
+      (A₁ -> A₂ -> ... -> B) -> Vec A₁ n -> Vec A₂ n -> ... -> Vec B n
 
 Yes: we can parameterize a function by a list of types and compute those n-ary types from the list. Folding a list of types into a type, given also the type of the result, is trivial:
 
@@ -1542,25 +1542,25 @@ Your first guess is probably that Agda can infer the list of types from the type
 
 gives yellow. And this is for a good reason, there are three ways to compute `ℕ -> ℕ -> ℕ` with `ToFun`:
 
-    ToFun (ℕ ∷ ℕ ∷ [])  ℕ             -- The obvious one.
-    ToFun (ℕ ∷ [])     (ℕ -> ℕ)       -- A sneaky one.
-    ToFun []           (ℕ -> ℕ -> ℕ)  -- Another sneaky one.
+      ToFun (ℕ ∷ ℕ ∷ [])  ℕ             -- The obvious one.
+      ToFun (ℕ ∷ [])     (ℕ -> ℕ)       -- A sneaky one.
+      ToFun []           (ℕ -> ℕ -> ℕ)  -- Another sneaky one.
 
 So the `ToFun _As _B =?= ℕ -> ℕ -> ℕ` unification problem does not have a single solution and hence can't be solved by Agda.
 
 However Agda sees that `zipN _+_` is applied to two vectors and the result is also a vector and since in the type signature of `zipN`
 
-    zipN : ∀ {As B n} -> ToFun As B -> ToVecFun As B n
+      zipN : ∀ {As B n} -> ToFun As B -> ToVecFun As B n
 
 the types of the arguments and the result are computed from `ToVecFun As B n`, we have the following unification problem:
 
-    ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
+      ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
 
 which Agda can immediately solve as
 
-    _As := ℕ ∷ ℕ ∷ []
-    _B  := ℕ
-    _n  := m
+      _As := ℕ ∷ ℕ ∷ []
+      _B  := ℕ
+      _n  := m
 
 And indeed there's no yellow here:
 
@@ -1571,9 +1571,9 @@ And indeed there's no yellow here:
 
 The reason for that is that `ToVecFun` does not return an arbitrary `B` in the `[]` case like `ToFun` -- `ToVecFun` always returns a `Vec` in the `[]` case, so resolving metas as
 
-    _As := ℕ ∷ []
-    _B  := ℕ -> ℕ
-    _n  := m
+      _As := ℕ ∷ []
+      _B  := ℕ -> ℕ
+      _n  := m
 
 is not possible as that would compute to `Vec ℕ m -> Vec (ℕ -> ℕ) m` rather than `Vec ℕ m -> Vec ℕ m -> Vec ℕ m`.
 
@@ -1589,11 +1589,11 @@ If we omit the resulting vector, we'll get yellow:
 
 as a standlone
 
-    ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> _R
+      ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> _R
 
 is inherently ambiguous again and Agda would need to do some non-trivial proof search in order to realize that `_R` can't be an `_->_` due to the other equation:
 
-    ToFun _As _B =?= ℕ -> ℕ -> ℕ
+      ToFun _As _B =?= ℕ -> ℕ -> ℕ
 
 Omitting an argument also results in metas not being resolved:
 
@@ -1604,21 +1604,21 @@ Omitting an argument also results in metas not being resolved:
 
 but that is something that I can't explain, I can't spot any problem with solving
 
-    ToVecFun _As _B _n ≡ (Vec ℕ m -> _ -> Vec ℕ m)
+      ToVecFun _As _B _n ≡ (Vec ℕ m -> _ -> Vec ℕ m)
 
 with
 
-    _As := Vec ℕ m ∷ Vec ℕ m ∷ []
-    _B  := Vec ℕ m
-    _n  := m
+      _As := Vec ℕ m ∷ Vec ℕ m ∷ []
+      _B  := Vec ℕ m
+      _n  := m
 
 Note also that constructor-headedness is compositional. The
 
-    ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
+      ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
 
 problem expands to
 
-    ToFun (List.map (λ A -> Vec A n) _As) (Vec _B _n) =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
+      ToFun (List.map (λ A -> Vec A n) _As) (Vec _B _n) =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
 
 Agda sees that the RHS was computed from the `_∷_` case of `ToFun`, but the actual argument of `ToFun` is not a meta or a `_∷_` already, it's a `List.map (λ A -> Vec A n) _As` and so Agda needs to invert `List.map` for unification to proceed. Which is no problem, since `List.map` is also constructor-headed.
 
@@ -1765,7 +1765,7 @@ which in turn allows to [emulate cumulativity of universes](http://effectfully.b
 
 The list of equalities shown above is not exhaustive. E.g. if during type checking Agda comes up with the following constraint:
 
-    α <= β <= α
+      α <= β <= α
 
 it gets solved as `α ≡ β`.
 
