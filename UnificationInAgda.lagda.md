@@ -185,7 +185,7 @@ In Haskell types of bindings can be inferred from how those bindings are used la
 
     one = 1
 
-is `Integer` (see [monomorphism restriction](https://wiki.haskell.org/Monomorphism_restriction), but in
+is `Integer` (see [monomorphism restriction](https://wiki.haskell.org/Monomorphism_restriction)), but in
 
     one = 1
     one' = one :: Word
@@ -1410,23 +1410,19 @@ Quoting the [changelog](https://github.com/agda/agda/blob/064095e14042bdf64c7d7c
 
 #### Example 1: back to `idᵥ⁺`
 
-Now if we come back to this example (TODO: add highlighting somehow?):
+Now if we come back to this example:
 
-> `idᵥ⁺` applied to a non-constant vector has essentially the same inference properties.
->
-> Without specializing the implicit arguments we get yellow:
->
->
->     _ = λ n m (xs : Vec ℕ (n +′ m)) -> idᵥ⁺ xs
->
->
-> Specializing `m` doesn't help, still yellow:
->
->
->     _ = λ n m (xs : Vec ℕ (n +′ m)) -> idᵥ⁺ {m = m} xs
->
+<blockquote>
+<p><code>idᵥ⁺</code> applied to a non-constant vector has essentially the same inference properties.</p>
+<p>Without specializing the implicit arguments we get yellow:</p>
+<pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-symbol">&#955;</span> <span class="agda2-highlight-bound-variable">n</span> <span class="agda2-highlight-bound-variable">m</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-bound-variable">xs</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-datatype">Vec</span> <span class="agda2-highlight-datatype">&#8469;</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-bound-variable">n</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-function">+&#8242;</span></span> <span class="agda2-highlight-bound-variable">m</span><span class="agda2-highlight-symbol">))</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-function"><span class="agda2-highlight-unsolved-meta">id&#7525;&#8314;</span></span> <span class="agda2-highlight-unsolved-constraint"><span class="agda2-highlight-unsolved-meta"><span class="agda2-highlight-bound-variable">xs</span></span></span>
+</pre>
+<p>Specializing <code>m</code> doesn't help, still yellow:</p>
+<pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-symbol">&#955;</span> <span class="agda2-highlight-bound-variable">n</span> <span class="agda2-highlight-bound-variable">m</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-bound-variable">xs</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-datatype">Vec</span> <span class="agda2-highlight-datatype">&#8469;</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-bound-variable">n</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-function">+&#8242;</span></span> <span class="agda2-highlight-bound-variable">m</span><span class="agda2-highlight-symbol">))</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-function"><span class="agda2-highlight-unsolved-meta">id&#7525;&#8314;</span></span> <span class="agda2-highlight-symbol">{</span>m <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-bound-variable">m</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-unsolved-constraint"><span class="agda2-highlight-unsolved-meta"><span class="agda2-highlight-bound-variable">xs</span></span></span>
+</pre>
+</blockquote>
 
-but define `idᵥ⁺` over `_+_` rather than `_+′_`:
+but if define `idᵥ⁺` over `_+_` rather than `_+′_`:
 
 ```agda
   idᵥ⁺ : ∀ {A n m} -> Vec A (n + m) -> Vec A (n + m)
@@ -1443,7 +1439,7 @@ satisfies the type checker.
 
 And
 
-```
+```agda
   _ = λ n m (xs : Vec ℕ (n + m)) -> idᵥ⁺ xs
 ```
 
@@ -1632,7 +1628,7 @@ Agda sees that the RHS was computed from the `_∷_` case of `ToFun`, but the ac
 module EtaRules where
 ```
 
-Agda implements eta-rules for "negative" types (TODO: link).
+Agda implements eta-rules for [negative types](https://ncatlab.org/nlab/show/negative+type).
 
 One such rule is that a function is definitionally equal to its eta-expanded version:
 
@@ -1643,7 +1639,7 @@ One such rule is that a function is definitionally equal to its eta-expanded ver
 
 Usefulness of this eta-rule is not something that one thinks of much, but that is only until they try to work in a language that doesn't support the rule (spoiler: it's a huge pain).
 
-All records support eta-rules by default (that can be switched off for a single record via an explicit `no-eta-equality` mark or for all records via TODO: what).
+All records support eta-rules by default (that can be switched off for a single record via an explicit [`no-eta-equality`](https://agda.readthedocs.io/en/v2.6.1/language/record-types.html#eta-expansion) mark or for all records in a file via `{-# OPTIONS --no-eta-equality #-}` at the beginning of the file).
 
 The simplest record is one with no fields:
 
@@ -1683,7 +1679,7 @@ For a record with fields the eta-rule is "an element of the record is always the
   _ = λ t -> refl
 ```
 
-Supporting eta-equality for sum types is possible in theory (TODO: link), but Agda does not implement that. Any `data` definition in Agda does not support eta-equality, including an empty `data` declaration like
+Supporting eta-equality for sum types is [possible in theory](https://ncatlab.org/nlab/show/sum+type#as_a_positive_type), but Agda does not implement that. Any `data` definition in Agda does not support eta-equality, including an empty `data` declaration like
 
 ```agda
   data Empty : Set where
