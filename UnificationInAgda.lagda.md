@@ -240,7 +240,7 @@ and [it'll type check](https://ideone.com/mZQM1f). However the Agda's equivalent
   I = S K K
 ```
 
-results in the last `K` being highlighted with yellow (which means that not all metavariables were resolved). To see why, let's reduce `S K K` a bit:
+results in the last `K` being highlighted in yellow (which means that not all metavariables were resolved). To see why, let's reduce `S K K` a bit:
 
       λ x -> K x (K x)
 
