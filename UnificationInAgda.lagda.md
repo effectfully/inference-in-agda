@@ -35,6 +35,7 @@ We'll look into basics of type inference in Agda and then move to more advanced 
 open import Level renaming (suc to lsuc; zero to lzero)
 open import Function.Core using (_∘_; _∋_; case_of_) renaming (_|>_ to _&_)
 open import Relation.Binary.PropositionalEquality
+open import Data.Empty using (⊥)
 open import Data.Unit.Base using (⊤; tt)
 open import Data.Bool.Base using (Bool; true; false) renaming (_∨_ to _||_; _∧_ to _&&_)
 open import Data.Nat.Base  using (ℕ; zero; suc; _+_; _*_; _∸_)
@@ -306,7 +307,7 @@ Recall that we're in a dependently typed language and here the type of the resul
 
 types are correct for that function. Even though they are "morally" the same, they are not definitionally equal and there's a huge difference between them: the former one doesn't have a dependency and the latter one has.
 
-There is a way to tell Agda that pattern matching is non-dependent: use `case-of`, e.g.
+There is a way to tell Agda that pattern matching is non-dependent: use `case_of_`, e.g.
 
 ```agda
   _ = λ (n : ℕ) -> case n of λ where
@@ -401,7 +402,7 @@ The following definitions type check:
   _ = (λ x -> 2) 1
 ```
 
-reassuring that Agda's type checker is not based on some simple bidirectional typing rules (if you're not familier with those, see [Bidirectional Typing Rules: A Tutorial](http://www.davidchristiansen.dk/tutorials/bidirectional.pdf), but the type checker does have a bidirectional interface ([`inferExpr`](https://hackage.haskell.org/package/Agda-2.6.1/docs/Agda-TheTypeChecker.html#v:inferExpr) & [`checkExpr`](https://hackage.haskell.org/package/Agda-2.6.1/docs/Agda-TheTypeChecker.html#v:checkExpr)) where type inference is defined in terms of type checking for the most part:
+reassuring that Agda's type checker is not based on some simple bidirectional typing rules (if you're not familier with those, see [Bidirectional Typing Rules: A Tutorial](http://www.davidchristiansen.dk/tutorials/bidirectional.pdf)), but the type checker does have a bidirectional interface ([`inferExpr`](https://hackage.haskell.org/package/Agda-2.6.1/docs/Agda-TheTypeChecker.html#v:inferExpr) & [`checkExpr`](https://hackage.haskell.org/package/Agda-2.6.1/docs/Agda-TheTypeChecker.html#v:checkExpr)) where type inference is defined in terms of type checking for the most part:
 
       -- | Infer the type of an expression. Implemented by checking against a meta variable. <...>
       inferExpr :: A.Expr -> TCM (Term, Type)
@@ -621,7 +622,7 @@ module UnderTheHood where
   open BasicsOfTypeInference
 ```
 
-### Example 1
+### Example 1: `listId (1 ∷ 2 ∷ [])`
 
 Returning to our `listId` example, when the user writes
 
@@ -641,7 +642,7 @@ here is what happens under the hood:
 
 And this is how Agda figures out that `A` gets instantiated by `ℕ`.
 
-### Example 2
+### Example 2: `suc ∷ listId ((λ x -> x) ∷ [])`
 
 Similarly, when the user writes
 
@@ -672,7 +673,7 @@ Similarly, when the user writes
          _B := ℕ
          _A := ℕ -> ℕ
 
-### Example 3
+### Example 3: `λ xs -> suc ∷ listId xs`
 
 When the user writes
 
@@ -982,7 +983,7 @@ And specializing `n` (with or without `m`) allows Agda to resolve all the metas:
 
 So we have the following rule of thumb: whenever the type of function `h` mentions function `f` at the type level, every argument that gets pattern matched on in `f` (including any internal function calls) should be made explicit in `h` and every other argument can be left implicit (there are a few exceptions to this rule, which we'll consider below, but it applies in most cases).
 
-#### Example 1
+#### Example 1: `_+′_`
 
 `idᵥ⁺` mentions `_+′_` in its type:
 
@@ -994,7 +995,7 @@ and `_+′_` pattern matches on `n`, hence Agda won't be able to infer `n`, i.e.
 
 At the same time `_+′_` doesn't match on its second argument, `m`, hence we leave it implicit.
 
-#### Example 2
+#### Example 2: `_∸_`
 
 A function mentioning `_∸_`
 
@@ -1023,7 +1024,7 @@ is accepted unlike
   _ = idᵥ⁻ 2 1 (1 ∷ᵥ []ᵥ)
 ```
 
-#### Example 3
+#### Example 3: `_*_`
 
 A function mentioning `_*_`
 
@@ -1051,7 +1052,7 @@ type check, unlike
   _ = idᵥ* 2 1 (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
 ```
 
-#### Example 4
+#### Example 4: `_+′_`, two arguments
 
 With this definition:
 
@@ -1069,7 +1070,7 @@ it suffices to explicitly provide either `n` or `m`:
 
 This is because with explicitly provided `n` Agda can determine `m` from `n +′ m` and with explicitly provided `m` Agda can determine `n` from `m +′ n`.
 
-#### Example 5
+#### Example 5: nested `_+′_`, two arguments
 
 In the following definition we have multiple mentions of `_+′_` at the type level:
 
@@ -1094,7 +1095,7 @@ A test:
   _ = ignore2p 1 (3 ∷ᵥ 4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
 ```
 
-#### Example 6
+#### Example 6: nested `_+′_`, one argument
 
 A very similar example:
 
@@ -1481,16 +1482,16 @@ module PolyvariadicZip where
 
 We can define this family of functions over vectors:
 
-      replicate : ∀ {n} → A → Vec A n
-      map : ∀ {n} → (A → B) → Vec A n → Vec B n
-      zipWith : ∀ {n} → (A → B → C) → Vec A n → Vec B n → Vec C n
-      zipWith3 : ∀ {n} → (A → B → C → D) → Vec A n → Vec B n → Vec C n → Vec D n
+      replicate : ∀ {n} → A → Vec A m
+      map : ∀ {n} → (A → B) → Vec A m → Vec B m
+      zipWith : ∀ {n} → (A → B → C) → Vec A m → Vec B m → Vec C m
+      zipWith3 : ∀ {n} → (A → B → C → D) → Vec A m → Vec B m → Vec C m → Vec D m
 
 (the Agda stdlib provides all of those but the last one)
 
 Can we define a generic function that covers all of the above? Its type signature should look like this:
 
-      (A₁ -> A₂ -> ... -> B) -> Vec A₁ n -> Vec A₂ n -> ... -> Vec B n
+      (A₁ -> A₂ -> ... -> B) -> Vec A₁ m -> Vec A₂ m -> ... -> Vec B m
 
 Yes: we can parameterize a function by a list of types and compute those n-ary types from the list. Folding a list of types into a type, given also the type of the result, is trivial:
 
@@ -1500,40 +1501,40 @@ Yes: we can parameterize a function by a list of types and compute those n-ary t
   ToFun (A ∷ As) B = A -> ToFun As B
 ```
 
-This allows us to compute the n-ary type of the function. In order to compute the n-ary type of the result we need to map the list of types with `λ A -> Vec A n` and turn `B` (the type of the resulting of the zipping function) into `Vec B n` (the type of the final result):
+This allows us to compute the n-ary type of the function. In order to compute the n-ary type of the result we need to map the list of types with `λ A -> Vec A m` and turn `B` (the type of the resulting of the zipping function) into `Vec B m` (the type of the final result):
 
 ```agda
   ToVecFun : List Set -> Set -> ℕ -> Set
-  ToVecFun As B n = ToFun (List.map (λ A -> Vec A n) As) (Vec B n)
+  ToVecFun As B m = ToFun (List.map (λ A -> Vec A m) As) (Vec B m)
 ```
 
-It only remains to recurse on the list of types in an auxiliary function (n-ary `(<*>)`, using Haskell jargon) and define `zipN` in terms of that function:
+It only remains to recurse on the list of types in an auxiliary function (n-ary `(<*>)`, in Haskell jargon) and define `zipWithN` in terms of that function:
 
 ```agda
-  apN : ∀ {As B n} -> Vec (ToFun As B) n -> ToVecFun As B n
+  apN : ∀ {As B m} -> Vec (ToFun As B) m -> ToVecFun As B m
   apN {[]}     ys = ys
   apN {A ∷ As} fs = λ xs -> apN {As} (fs ⊛ xs)
 
-  zipN : ∀ {As B n} -> ToFun As B -> ToVecFun As B n
-  zipN f = apN (Vec.replicate f)
+  zipWithN : ∀ {As B m} -> ToFun As B -> ToVecFun As B m
+  zipWithN f = apN (Vec.replicate f)
 ```
 
 Some tests verifying that the function does what it's supposed to:
 
 ```agda
-  _ : zipN 1 ≡ (1 ∷ᵥ 1 ∷ᵥ 1 ∷ᵥ []ᵥ)
+  _ : zipWithN 1 ≡ (1 ∷ᵥ 1 ∷ᵥ 1 ∷ᵥ []ᵥ)
   _ = refl
 
-  _ : zipN suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ (2 ∷ᵥ 3 ∷ᵥ 4 ∷ᵥ []ᵥ)
+  _ : zipWithN suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ (2 ∷ᵥ 3 ∷ᵥ 4 ∷ᵥ []ᵥ)
   _ = refl
 
-  _ : zipN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
+  _ : zipWithN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
   _ = refl
 ```
 
 Note how we do not provide the list of types explicitly in any of these cases, even though there's pattern matching on that list.
 
-Your first guess is probably that Agda can infer the list of types from the type of the function passed to `zipN`. I.e. the type of `_+_` is `ℕ -> ℕ -> ℕ` and so it corresponds to `Fun (ℕ ∷ ℕ ∷ []) ℕ`. But that is not really clear to Agda as this snippet:
+Your first guess is probably that Agda can infer the list of types from the type of the function passed to `zipWithN`. I.e. the type of `_+_` is `ℕ -> ℕ -> ℕ` and so it corresponds to `Fun (ℕ ∷ ℕ ∷ []) ℕ`. But that is not really clear to Agda as this snippet:
 
 ```agda
   _ : ToFun _ _ ≡ (ℕ -> ℕ -> ℕ)
@@ -1548,9 +1549,9 @@ gives yellow. And this is for a good reason, there are three ways to compute `�
 
 So the `ToFun _As _B =?= ℕ -> ℕ -> ℕ` unification problem does not have a single solution and hence can't be solved by Agda.
 
-However Agda sees that `zipN _+_` is applied to two vectors and the result is also a vector and since in the type signature of `zipN`
+However Agda sees that `zipWithN _+_` is applied to two vectors and the result is also a vector and since in the type signature of `zipWithN`
 
-      zipN : ∀ {As B n} -> ToFun As B -> ToVecFun As B n
+      zipWithN : ∀ {As B n} -> ToFun As B -> ToVecFun As B n
 
 the types of the arguments and the result are computed from `ToVecFun As B n`, we have the following unification problem:
 
@@ -1582,7 +1583,7 @@ Hence there's no ambiguity now and since `ToVecFun` also returns a `_->_` in the
 If we omit the resulting vector, we'll get yellow:
 
 ```agda
-  _ : zipN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+  _ : zipWithN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
   _ = refl
 
 ```
@@ -1591,18 +1592,32 @@ as a standlone
 
       ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> _R
 
-is inherently ambiguous again and Agda would need to do some non-trivial proof search in order to realize that `_R` can't be an `_->_` due to the other equation:
+is inherently ambiguous again and Agda would need to do some non-trivial proof search in order to realize that `_R` can't be an `_->_` because of what the other equation is:
 
       ToFun _As _B =?= ℕ -> ℕ -> ℕ
+
+However, by specifying `B` to something that is clearly different from `->`, we can turn `ToFun` (a constructor/argument-headed function) into a proper constructor-headed function. This type checks:
+
+```agda
+  _ : ToFun _ ℕ ≡ (ℕ -> ℕ -> ℕ)
+  _ = refl
+```
+
+And hence we can omit the resulting vector, if `B` is specified, because knowing `B` and the type of the zipping function is sufficient for inverting `ToFun` and inferring `As`:
+
+```agda
+  _ : zipWithN {B = ℕ} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+  _ = refl
+```
 
 Omitting an argument also results in metas not being resolved:
 
 ```agda
-  _ : zipN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) _ ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
+  _ : zipWithN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) _ ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
   _ = refl
 ```
 
-but that is something that I can't explain, I can't spot any problem with solving
+This is something that I can't explain, I'm unable to spot any problem with solving
 
       ToVecFun _As _B _n ≡ (Vec ℕ m -> _ -> Vec ℕ m)
 
@@ -1612,15 +1627,22 @@ with
       _B  := Vec ℕ m
       _n  := m
 
-Note also that constructor-headedness is compositional. The
+And specifying `B` doesn't help in this case:
+
+```agda
+  _ : zipWithN {B = ℕ} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) _ ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
+  _ = refl
+```
+
+Finally, note that constructor-headedness is compositional. The
 
       ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
 
 problem expands to
 
-      ToFun (List.map (λ A -> Vec A n) _As) (Vec _B _n) =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
+      ToFun (List.map (λ A -> Vec A m) _As) (Vec _B _n) =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
 
-Agda sees that the RHS was computed from the `_∷_` case of `ToFun`, but the actual argument of `ToFun` is not a meta or a `_∷_` already, it's a `List.map (λ A -> Vec A n) _As` and so Agda needs to invert `List.map` for unification to proceed. Which is no problem, since `List.map` is also constructor-headed.
+Agda sees that the RHS was computed from the `_∷_` case of `ToFun`, but the actual argument of `ToFun` is not a meta or a `_∷_` already, it's a `List.map (λ A -> Vec A m) _As` and so Agda needs to invert `List.map` for unification to proceed. Which is no problem, since `List.map` is also constructor-headed.
 
 ## Eta-rules
 
@@ -1696,25 +1718,143 @@ Eta-rules for records may seem not too exciting, but there are a few important u
 
 ### Computing predicates
 
+`ℕ` and `{_ : ⊤} -> ℕ` are isomorphic.
+
+```agda
+  _ : ℕ -> {_ : ⊤} -> ℕ
+  _ = λ n -> n
+
+  _ : ({_ : ⊤} -> ℕ) -> ℕ
+  _ = λ n -> n
+
+  open import Data.List.Base as List
+
+  module V1 where
+    open import Data.Maybe.Base as Maybe
+
+    _`div`_ : ℕ -> ℕ -> Maybe ℕ
+    n `div` 0     = nothing
+    n `div` suc m = go n m where
+      go : ℕ -> ℕ -> Maybe ℕ
+      go  0       m      = just 0
+      go (suc n)  0      = Maybe.map suc (go n m)
+      go (suc n) (suc m) = go n m
+
+    _ : List.map (λ n -> n `div` 3) (0 ∷ 1 ∷ 2 ∷ 3 ∷ 4 ∷ 5 ∷ 6 ∷ 7 ∷ 8 ∷ 9 ∷ 10 ∷ 11 ∷ 12 ∷ [])
+      ≡ List.map  just              (0 ∷ 0 ∷ 0 ∷ 1 ∷ 1 ∷ 1 ∷ 2 ∷ 2 ∷ 2 ∷ 3 ∷ 3  ∷ 3  ∷ 4  ∷ [])
+    _ = refl
+
+    _ : ∀ n -> n `div` 0 ≡ nothing
+    _ = λ n -> refl
+
+  module V2 where
+    _≢0 : ℕ -> Set
+    _≢0 0 = ⊥
+    _≢0 _ = ⊤
+
+    _`div`_ : ℕ -> ∀ m {_ : m ≢0} -> ℕ
+    _`div`_ n 0 {()}
+    n `div` suc m = go n m where
+      go : ℕ -> ℕ -> ℕ
+      go  0       m      = 0
+      go (suc n)  0      = suc (go n m)
+      go (suc n) (suc m) = go n m
+
+    _ : List.map (λ n -> n `div` 4) (0 ∷ 1 ∷ 2 ∷ 3 ∷ 4 ∷ 5 ∷ 6 ∷ 7 ∷ 8 ∷ 9 ∷ 10 ∷ 11 ∷ 12 ∷ [])
+      ≡                             (0 ∷ 0 ∷ 0 ∷ 0 ∷ 1 ∷ 1 ∷ 1 ∷ 1 ∷ 2 ∷ 2 ∷ 2  ∷ 2  ∷ 3  ∷ [])
+    _ = refl
+
+    -- _1222 : ⊥
+    _ : ∀ n -> n `div` 0 ≡ n `div` 0
+    _ = λ n -> refl
+
+  -- TODO: mention TypeError
+  -- TODO: parse don't validate reference (and the other two, including the recent one by Gonzalez)
+```
+
+
 ### N-ary things
 
-  -- _ : Vec.map suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
-  -- _ = refl
+```agda
+  _ : (∀ {(A , B) : Set × Set} -> A -> B -> ℕ) -> ∀ {A B} -> A -> B -> ℕ
+  _ = λ f -> f
 
-  -- _ : Vec.zipWith _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
-  -- _ = refl
+  _ : (∀ {A B} -> A -> B -> ℕ) -> ∀ {(A , B) : Set × Set} -> A -> B -> ℕ
+  _ = λ f -> f
+```
 
-  -- _ : zipN suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
-  -- _ = refl
+```agda
+module PolyvariadicZipEta where
+  open import Data.Vec.Base as Vec renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
 
-  -- _ : zipN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
-  -- _ = refl
+  record ⊤₁ : Set₁ where
+    constructor tt₁
 
-  -- _ : zipN {_ ∷ []} suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
-  -- _ = refl
+  -- This function is constructor-headed.
+  Sets : ℕ -> Set₁
+  Sets  0      = ⊤₁
+  Sets (suc n) = Set × Sets n
 
-  -- _ : zipN {_ ∷ _ ∷ []} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
-  -- _ = refl
+  -- Since `Sets` is constructor-headed, `n` can be inferred from the explicit `Sets n` argument
+  -- and thus can be left implicit.
+  -- This function is constructor-headed.
+  mapSets : ∀ {n} -> (Set -> Set) -> Sets n -> Sets n
+  mapSets {0}     F  tt₁     = tt₁
+  mapSets {suc n} F (A , As) = F A , mapSets F As
+
+  -- `n` can be inferred from `Sets n` as well.
+  -- As before, this function is constructor/argument-headed.
+  ToFun : ∀ {n} -> Sets n -> Set -> Set
+  ToFun {0}      tt₁     B = B
+  ToFun {suc n} (A , As) B = A -> ToFun As B
+
+  -- As before, even though this function delegates to `ToFun`, it's constructor-headed
+  -- (as opposed to the constructor/argument-headed `ToFun`), because the `B` of `ToFun` gets
+  -- instantiated with `Vec B m` and so the two clauses of `ToFun` become disjoint (because `Vec`
+  -- and `->` are two different type constructors).
+  ToVecFun : ∀ {n} -> Sets n -> Set -> ℕ -> Set
+  ToVecFun As B m = ToFun (mapSets (λ A -> Vec A m) As) (Vec B m)
+
+  -- Here `Sets n` is implicit, so in order to infer `n` from it, Agda needs to be able to infer
+  -- `As`. As before, it's not possible to infer `As` from the type of the argument, but is
+  -- possible to infer it from the type of the result.
+  apN : ∀ {n B m} {As : Sets n} -> Vec (ToFun As B) m -> ToVecFun As B m
+  apN {0}     ys = ys
+  apN {suc n} fs = λ xs -> apN (fs ⊛ xs)
+
+  --
+  zipWithN : ∀ n {B m} {As : Sets n} -> ToFun As B -> ToVecFun As B m
+  zipWithN _ f = apN (Vec.replicate f)
+
+  _ : zipWithN _ 1 ≡ (1 ∷ᵥ 1 ∷ᵥ 1 ∷ᵥ []ᵥ)
+  _ = refl
+
+  _ : zipWithN _ suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ (2 ∷ᵥ 3 ∷ᵥ 4 ∷ᵥ []ᵥ)
+  _ = refl
+
+  _ : zipWithN _ _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
+  _ = refl
+
+
+
+  _ : zipWithN _ suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
+  _ = refl
+
+  _ : zipWithN _ {B = ℕ} suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
+  _ = refl
+
+
+
+
+  _ : zipWithN 1 suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
+  _ = refl
+
+  _ : zipWithN 2 _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+  _ = refl
+
+  _ : zipWithN 2 _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+  _ = refl
+```
 
 
 
@@ -1836,3 +1976,20 @@ lazily match on index of a singleton, then match on the singleton where it's nee
 
   _ : 1OrDouble _ 0 ≡ 1
   _ = refl
+
+
+
+## Completely unrelated
+
+inferKind :: Type -> Kind
+checkKind :: Type -> Kind -> Bool
+
+
+type CoolM a = (AndCool, a)
+inferKind :: Type -> CoolM Kind
+checkKind :: Type -> Kind -> CoolM ()
+
+kindcheck :: Type -> Cool
+kindcheck ty = cond `and` res where
+  (cond, kind) = inferKind ty
+  res = toCool . isRight . unsafePerformIO . try $ evaluate kind
