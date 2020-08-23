@@ -33,7 +33,7 @@ We'll look into basics of type inference in Agda and then move to more advanced 
 
 ```agda
 open import Level renaming (suc to lsuc; zero to lzero)
-open import Function.Core using (_∘_; _∋_; case_of_) renaming (_|>_ to _&_)
+open import Function using (_∘_; _∋_; case_of_) renaming (_|>_ to _&_)
 open import Relation.Binary.PropositionalEquality
 open import Data.Empty using (⊥)
 open import Data.Unit.Base using (⊤; tt)
@@ -608,12 +608,31 @@ Even though at the call site (`f True`) `b` is determined via the `b ~ ()` const
 
 The type of the `f` function mentions the `b` variable in the `C a b` constraint, but that variable is not mentioned anywhere else and hence can't be inferred in the general case, so Haskell complains, because by default it wants all type variables to be inferrable upfront regardless of whether at the call site it would be possible to infer a variable in some cases or not. We can override the default behavior by enabling the `AllowAmbiguousTypes` extension, which makes the code type check without any additional changes.
 
-Agda's unification capabilities are well above Haskell's ones, so Agda doesn't attempt to predict what can and can't be inferred and allows us to make anything implicit deferring resolution problems to the call site (i.e. it's like having `AllowAmbiguousTypes` globally enabled in Haskell). In fact, you can make implicit even such things that are pretty much guaranteed to never have any chance of being inferred, for example
+Agda's unification capabilities are well above Haskell's ones, so Agda doesn't attempt to predict what can and can't be inferred and allows us to make anything implicit, deferring resolution problems to the call site (i.e. it's like having `AllowAmbiguousTypes` globally enabled in Haskell). In fact, you can make implicit even such things that are pretty much guaranteed to never have any chance of being inferred, for example
 
 ```agda
   const-zeroᵢ : {_ : ℕ} -> ℕ
   const-zeroᵢ = zero
 ```
+
+as even
+
+```agda
+  const-zeroᵢ′ : {_ : ℕ} -> ℕ
+  const-zeroᵢ′ = const-zeroᵢ
+```
+
+results in unresolved metas, because it elaborates to
+
+```agda
+  const-zeroᵢ′-elaborated : {_ : ℕ} -> ℕ
+  const-zeroᵢ′-elaborated {_} = const-zeroᵢ {_}
+```
+
+due to eager insertion of implicits and the fact that there's a variable of type `ℕ` bound in the current scope (regardless of whether it's bound explicitly or implicitly) does not have any effect on how implicits get resolved in the body of the definition as metavariable resolution does not come up with instantiations for metavariables at random by looking at the local or global scope, it only determines what instantiations are bound to be by solving unification problems that arise during type checking.
+
+TODO: still can be useful as in `({_ : ℕ} -> ℕ) -> ℕ`
+TODO: mention instance arguments
 
 ## Under the hood
 
@@ -1711,66 +1730,158 @@ Supporting eta-equality for sum types is [possible in theory](https://ncatlab.or
 
 Eta-rules for records may seem not too exciting, but there are a few important use cases.
 
-
-
-
-
-
 ### Computing predicates
 
-`ℕ` and `{_ : ⊤} -> ℕ` are isomorphic.
+Consider the division function (defined by repeated subtraction in a slightly weird way to please the termination checker):
 
 ```agda
-  _ : ℕ -> {_ : ⊤} -> ℕ
-  _ = λ n -> n
+module Div-v1 where
+  open import Data.List.Base as List
+  open import Data.Maybe.Base
 
-  _ : ({_ : ⊤} -> ℕ) -> ℕ
-  _ = λ n -> n
+  -- This function divides its first argument by the successor of the second one via repeated
+  -- subtraction.
+  _`div-suc`_ : ℕ -> ℕ -> ℕ
+  n `div-suc` m = go n m where
+    go : ℕ -> ℕ -> ℕ
+    go  0       m      = 0
+    go (suc n)  0      = suc (go n m)
+    go (suc n) (suc m) = go n m
+
+  _`div`_ : ℕ -> ℕ -> Maybe ℕ
+  n `div` 0     = nothing
+  n `div` suc m = just (n `div-suc` m)
+```
+
+An attempt to divide a natural number by `0` results in `nothing`, otherwise we get the quotient wrapped in `just`.
+
+We can check that all natural numbers up to `12` get divided by `3` correctly:
+
+```agda
+  _ : List.map (λ n -> n `div` 3) (0 ∷ 1 ∷ 2 ∷ 3 ∷ 4 ∷ 5 ∷ 6 ∷ 7 ∷ 8 ∷ 9 ∷ 10 ∷ 11 ∷ 12 ∷ [])
+    ≡ List.map  just              (0 ∷ 0 ∷ 0 ∷ 1 ∷ 1 ∷ 1 ∷ 2 ∷ 2 ∷ 2 ∷ 3 ∷ 3  ∷ 3  ∷ 4  ∷ [])
+  _ = refl
+```
+
+and that an attempt to divide any number by `0` will give us `nothing`:
+
+```agda
+  _ : ∀ n -> n `div` 0 ≡ nothing
+  _ = λ n -> refl
+```
+
+This all works as expected, however we can redefine the division function is a way that allows us to
+
+1. not wrap the result in `Maybe`
+2. easily recover the original definition
+
+Here's how:
+
+```agda
+module Div-v2 where
+  open Div-v1 using (_`div-suc`_)
 
   open import Data.List.Base as List
+  open import Data.Maybe.Base
 
-  module V1 where
-    open import Data.Maybe.Base as Maybe
+  _≢0 : ℕ -> Set
+  _≢0 0 = ⊥
+  _≢0 _ = ⊤
 
-    _`div`_ : ℕ -> ℕ -> Maybe ℕ
-    n `div` 0     = nothing
-    n `div` suc m = go n m where
-      go : ℕ -> ℕ -> Maybe ℕ
-      go  0       m      = just 0
-      go (suc n)  0      = Maybe.map suc (go n m)
-      go (suc n) (suc m) = go n m
+  _`div`_ : ℕ -> ∀ m {_ : m ≢0} -> ℕ
+  _`div`_ n  0      {()}
+  _`div`_ n (suc m)      = n `div-suc` m  -- The worker is the same as in the original version.
+```
 
-    _ : List.map (λ n -> n `div` 3) (0 ∷ 1 ∷ 2 ∷ 3 ∷ 4 ∷ 5 ∷ 6 ∷ 7 ∷ 8 ∷ 9 ∷ 10 ∷ 11 ∷ 12 ∷ [])
-      ≡ List.map  just              (0 ∷ 0 ∷ 0 ∷ 1 ∷ 1 ∷ 1 ∷ 2 ∷ 2 ∷ 2 ∷ 3 ∷ 3  ∷ 3  ∷ 4  ∷ [])
-    _ = refl
+Now instead of returning a `Maybe` we require the caller to provide a proof that the divisor is not zero. And the original definition can be recovered as
 
-    _ : ∀ n -> n `div` 0 ≡ nothing
-    _ = λ n -> refl
+```agda
+  _`div-original`_ : ℕ -> ℕ -> Maybe ℕ
+  n `div-original` 0     = nothing
+  n `div-original` suc m = just (n `div` suc m)
+```
 
-  module V2 where
-    _≢0 : ℕ -> Set
-    _≢0 0 = ⊥
-    _≢0 _ = ⊤
+There exist a bunch of blogposts advocating this style of programming:
 
-    _`div`_ : ℕ -> ∀ m {_ : m ≢0} -> ℕ
-    _`div`_ n 0 {()}
-    n `div` suc m = go n m where
-      go : ℕ -> ℕ -> ℕ
-      go  0       m      = 0
-      go (suc n)  0      = suc (go n m)
-      go (suc n) (suc m) = go n m
+1. [Parse, don't validate](https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/)
+2. [Type Safety Back and Forth](https://www.parsonsmatt.org/2017/10/11/type_safety_back_and_forth.html)
+3. [The golden rule of software quality](http://www.haskellforall.com/2020/07/the-golden-rule-of-software-quality.html)
 
-    _ : List.map (λ n -> n `div` 4) (0 ∷ 1 ∷ 2 ∷ 3 ∷ 4 ∷ 5 ∷ 6 ∷ 7 ∷ 8 ∷ 9 ∷ 10 ∷ 11 ∷ 12 ∷ [])
-      ≡                             (0 ∷ 0 ∷ 0 ∷ 0 ∷ 1 ∷ 1 ∷ 1 ∷ 1 ∷ 2 ∷ 2 ∷ 2  ∷ 2  ∷ 3  ∷ [])
-    _ = refl
+However all those blogposts talk about introducing separate data types for expressing invariants, while what we do here instead is using the regular type of natural numbers and adding an additional type-level predicate computing to `⊥` (a type, for which no value can be provided), if the divisor is zero, and `⊤` (a type with a single value) otherwise. I.e. the only way to provide a value of type `m ≢0` is to make this predicate compute to `⊤`, which requires `m` to be a `suc` of some natural number.
 
-    -- _1222 : ⊥
-    _ : ∀ n -> n `div` 0 ≡ n `div` 0
-    _ = λ n -> refl
+What Agda makes nice is that we don't need to ask the caller to provide a proof explicitly when `m` is in [WHNF](https://wiki.haskell.org/Weak_head_normal_form) (i.e. `m` is either `zero` or `suc m'` for some `m'`, definitionally), which enables us to leave the `m ≢0` argument implicit. The reason for that is when the outermost constructor of `m` is known, we have two cases:
+
+1. it's `zero`: `zero ≢0` reduces to `⊥` and no value of that type can be provided, hence there's no point in making that argument explicit as the user will have to reconsider what they're doing anyway
+2. it's `suc`: `suc m' ≢0` reduces to `⊤` and due to the eta-rule of `⊤`, the value of `⊤` can be inferred automatically
+
+Let us now see how this works in practice. For example, all numbers up to `12` get divided by `4` correctly:
+
+```agda
+  _ : List.map (λ n -> n `div` 4) (0 ∷ 1 ∷ 2 ∷ 3 ∷ 4 ∷ 5 ∷ 6 ∷ 7 ∷ 8 ∷ 9 ∷ 10 ∷ 11 ∷ 12 ∷ [])
+    ≡                             (0 ∷ 0 ∷ 0 ∷ 0 ∷ 1 ∷ 1 ∷ 1 ∷ 1 ∷ 2 ∷ 2 ∷ 2  ∷ 2  ∷ 3  ∷ [])
+  _ = refl
+```
+
+Note how we don't need to provide any proof that the divisor is not equal to zero, Agda figures that out itself.
+
+An attempt to divide a number by `0` gives us an unresolved metavariable of type `⊥` (note the yellow):
+
+```agda
+  -- _1222 : ⊥
+  _ : ∀ n -> n `div` 0 ≡ n `div` 0
+  _ = λ n -> refl
+```
+
+(if you're curious whether it's possible to throw an actual error instead of having an unresolved metavariable, then Agda does allow us to do that via [Reflection](https://agda.readthedocs.io/en/v2.6.1/language/reflection.html), see [this file](https://github.com/effectfully/random-stuff/blob/0857360c917a834a0473ab68fcf24c05960fc335/ThrowOnZero.agda))
+
+So in short, the eta-rule of `⊤` allows for convenient APIs when there are computation properties involved and it's fine to force upon the caller to specify enough info to make the property compute. In the above cases we only required a single argument to be in WHNF, but in other cases it can be necessary to have multiple arguments in [canonical form](https://ncatlab.org/nlab/show/canonical+form) (see [this Stackoverflow question and answer](https://stackoverflow.com/questions/33270639/so-whats-the-point) for an example).
+
+If we attempt to call ``_`div`_`` over TODO
+
+```agda
+  _`div-another`_ : ℕ -> ∀ m {_ : m ≢0} -> ℕ
+  n `div-another` m = n `div` m
+```
+
+
+
+(in the cases above that mean
+
+However such an API is only convenient
+
+
+
+
+
+
+
+
+
+
+is in  (i.e. `m` is a sequence of (possibly zero) applications of `suc` ending in `zero`. No functions, variables, postulates etc -- only the constructors of `ℕ`)
+
+
+If the divisor is zero, then `≢0` will reduce to `⊥` and you'll get a metavariable of this type (i.e. Agda will ask to explicitly provide an implicit value that cannot exist).
+
+
+
+
+`A` and `{_ : ⊤} -> A` are isomorphic.
+
+```agda
+  _ : {A : Set} -> A -> {_ : ⊤} -> A
+  _ = λ x -> x
+
+  _ : {A : Set} -> ({_ : ⊤} -> A) -> A
+  _ = λ x -> x
 
   -- TODO: mention TypeError
-  -- TODO: parse don't validate reference (and the other two, including the recent one by Gonzalez)
+  -- TODO: parse don't validate reference (and the probably other two, including the recent one by Gonzalez)
+  -- TODO: mention brutal introduction to dependent types
 ```
+
+
+-- TODO: talk about Is (suc m)
 
 
 ### N-ary things
@@ -1979,17 +2090,6 @@ lazily match on index of a singleton, then match on the singleton where it's nee
 
 
 
-## Completely unrelated
-
-inferKind :: Type -> Kind
-checkKind :: Type -> Kind -> Bool
-
-
-type CoolM a = (AndCool, a)
-inferKind :: Type -> CoolM Kind
-checkKind :: Type -> Kind -> CoolM ()
-
-kindcheck :: Type -> Cool
-kindcheck ty = cond `and` res where
-  (cond, kind) = inferKind ty
-  res = toCool . isRight . unsafePerformIO . try $ evaluate kind
+TODO: matching on the value of a known spine by lifting to the type level
+https://stackoverflow.com/questions/56333541/can-i-use-the-normal-form-of-a-value-to-avoid-incomplete-pattern-matches-in-agda
+a.k.a. matching on a top-level value
