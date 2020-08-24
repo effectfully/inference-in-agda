@@ -611,28 +611,55 @@ The type of the `f` function mentions the `b` variable in the `C a b` constraint
 Agda's unification capabilities are well above Haskell's ones, so Agda doesn't attempt to predict what can and can't be inferred and allows us to make anything implicit, deferring resolution problems to the call site (i.e. it's like having `AllowAmbiguousTypes` globally enabled in Haskell). In fact, you can make implicit even such things that are pretty much guaranteed to never have any chance of being inferred, for example
 
 ```agda
-  const-zeroᵢ : {_ : ℕ} -> ℕ
+  const-zeroᵢ : {ℕ} -> ℕ  -- `{ℕ}` is a shorthand for `{_ : ℕ}`
   const-zeroᵢ = zero
 ```
 
 as even
 
 ```agda
-  const-zeroᵢ′ : {_ : ℕ} -> ℕ
+  const-zeroᵢ′ : {ℕ} -> ℕ
   const-zeroᵢ′ = const-zeroᵢ
 ```
 
 results in unresolved metas, because it elaborates to
 
 ```agda
-  const-zeroᵢ′-elaborated : {_ : ℕ} -> ℕ
+  const-zeroᵢ′-elaborated : {ℕ} -> ℕ
   const-zeroᵢ′-elaborated {_} = const-zeroᵢ {_}
 ```
 
-due to eager insertion of implicits and the fact that there's a variable of type `ℕ` bound in the current scope (regardless of whether it's bound explicitly or implicitly) does not have any effect on how implicits get resolved in the body of the definition as metavariable resolution does not come up with instantiations for metavariables at random by looking at the local or global scope, it only determines what instantiations are bound to be by solving unification problems that arise during type checking.
+(due to eager insertion of implicits) and the fact that there's a variable of type `ℕ` bound in the current scope (regardless of whether it's bound explicitly or implicitly) does not have any effect on how implicits get resolved in the body of the definition as metavariable resolution does not come up with instantiations for metavariables at random by looking at the local or global scope, it only determines what instantiations are bound to be by solving unification problems that arise during type checking.
 
-TODO: still can be useful as in `({_ : ℕ} -> ℕ) -> ℕ`
-TODO: mention instance arguments
+But note that even though a value of type `{ℕ} -> ℕ` is not very useful on its own, having such a value as an argument like this:
+
+```agda
+  at1 : ({ℕ} -> ℕ) -> ℕ
+  at1 f = f {1}
+```
+
+can be useful occasionally, because it gives you an API where the caller can decide if they want to bind the additional implicit variable or not. Here's an example for each of the cases:
+
+```agda
+  _ = at1 2
+  _ = at1 λ {n} -> n
+```
+
+Thus, [covariantly positioned](https://en.wikipedia.org/wiki/Covariance_and_contravariance_(computer_science)#Function_types) implicits that are not determined by explicit arguments can be handy for providing defaults or additional data that the caller is usually not interested in, but occasionally is, and so the data is hidden in an implicit.
+
+By the way, if you do need to resolve things based on the current scope, then Agda has [instance arguments](https://agda.readthedocs.io/en/latest/language/instance-arguments.html) for that (they are similar to Haskell's type classes, but do not obey [global uniqueness of instances](http://blog.ezyang.com/2014/07/type-classes-confluence-coherence-global-uniqueness), because [it's hard](https://github.com/AndrasKovacs/pny1-assignment/blob/292e0fc28d7c27b35240d4f9d014bdf4db3afc62/DepTC.md#4-coherent-classes-in-dependent-languages)), for example
+
+```agda
+  const-zeroᵢᵢ : {{ℕ}} -> ℕ
+  const-zeroᵢᵢ = zero
+
+  const-zeroᵢᵢ′ : {{ℕ}} -> ℕ
+  -- Explicitly inserting `{{_}}` just to show that there's no interference with how instance
+  -- arguments get inserted.
+  const-zeroᵢᵢ′ {{_}} = const-zeroᵢᵢ
+```
+
+does not result in unresolved metas.
 
 ## Under the hood
 
@@ -1680,7 +1707,7 @@ One such rule is that a function is definitionally equal to its eta-expanded ver
 
 Usefulness of this eta-rule is not something that one thinks of much, but that is only until they try to work in a language that doesn't support the rule (spoiler: it's a huge pain).
 
-All records support eta-rules by default (that can be switched off for a single record via an explicit [`no-eta-equality`](https://agda.readthedocs.io/en/v2.6.1/language/record-types.html#eta-expansion) mark or for all records in a file via `{-# OPTIONS --no-eta-equality #-}` at the beginning of the file).
+All records support eta-rules by default (that can be switched off for a single record via an explicit [`no-eta-equality`](https://agda.readthedocs.io/en/latest/language/record-types.html#eta-expansion) mark or for all records in a file via `{-# OPTIONS --no-eta-equality #-}` at the beginning of the file).
 
 The simplest record is one with no fields:
 
@@ -1788,7 +1815,7 @@ module Div-v2 where
   _≢0 0 = ⊥
   _≢0 _ = ⊤
 
-  _`div`_ : ℕ -> ∀ m {_ : m ≢0} -> ℕ
+  _`div`_ : ℕ -> ∀ m -> {m ≢0} -> ℕ
   _`div`_ n  0      {()}
   _`div`_ n (suc m)      = n `div-suc` m  -- The worker is the same as in the original version.
 ```
@@ -1832,14 +1859,14 @@ An attempt to divide a number by `0` gives us an unresolved metavariable of type
   _ = λ n -> refl
 ```
 
-(if you're curious whether it's possible to throw an actual error instead of having an unresolved metavariable, then Agda does allow us to do that via [Reflection](https://agda.readthedocs.io/en/v2.6.1/language/reflection.html), see [this file](https://github.com/effectfully/random-stuff/blob/0857360c917a834a0473ab68fcf24c05960fc335/ThrowOnZero.agda))
+(if you're curious whether it's possible to throw an actual error instead of having an unresolved metavariable, then Agda does allow us to do that via [Reflection](https://agda.readthedocs.io/en/latest/language/reflection.html), see [this file](https://github.com/effectfully/random-stuff/blob/0857360c917a834a0473ab68fcf24c05960fc335/ThrowOnZero.agda))
 
 So in short, the eta-rule of `⊤` allows for convenient APIs when there are computation properties involved and it's fine to force upon the caller to specify enough info to make the property compute. In the above cases we only required a single argument to be in WHNF, but in other cases it can be necessary to have multiple arguments in [canonical form](https://ncatlab.org/nlab/show/canonical+form) (see [this Stackoverflow question and answer](https://stackoverflow.com/questions/33270639/so-whats-the-point) for an example).
 
 If we attempt to call ``_`div`_`` over TODO
 
 ```agda
-  _`div-another`_ : ℕ -> ∀ m {_ : m ≢0} -> ℕ
+  _`div-another`_ : ℕ -> ∀ m -> {m ≢0} -> ℕ
   n `div-another` m = n `div` m
 ```
 
