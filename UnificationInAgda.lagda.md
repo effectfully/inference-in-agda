@@ -1834,7 +1834,7 @@ There exist a bunch of blogposts advocating this style of programming:
 2. [Type Safety Back and Forth](https://www.parsonsmatt.org/2017/10/11/type_safety_back_and_forth.html)
 3. [The golden rule of software quality](http://www.haskellforall.com/2020/07/the-golden-rule-of-software-quality.html)
 
-However all those blogposts talk about introducing separate data types for expressing invariants, while what we do here instead is using the regular type of natural numbers and adding an additional type-level predicate computing to `⊥` (a type, for which no value can be provided), if the divisor is zero, and `⊤` (a type with a single value) otherwise. I.e. the only way to provide a value of type `m ≢0` is to make this predicate compute to `⊤`, which requires `m` to be a `suc` of some natural number.
+However all those blogposts talk about introducing separate data types for expressing invariants, while what we do here instead is use the regular type of natural numbers and add an additional type-level predicate computing to `⊥` (a type, for which no value can be provided), if the divisor is zero, and `⊤` (a type with a single value) otherwise. I.e. the only way to provide a value of type `m ≢0` is to make this predicate compute to `⊤`, which requires `m` to be a `suc` of some natural number.
 
 What Agda makes nice is that we don't need to ask the caller to provide a proof explicitly when `m` is in [WHNF](https://wiki.haskell.org/Weak_head_normal_form) (i.e. `m` is either `zero` or `suc m'` for some `m'`, definitionally), which enables us to leave the `m ≢0` argument implicit. The reason for that is when the outermost constructor of `m` is known, we have two cases:
 
@@ -1861,15 +1861,92 @@ An attempt to divide a number by `0` gives us an unresolved metavariable of type
 
 (if you're curious whether it's possible to throw an actual error instead of having an unresolved metavariable, then Agda does allow us to do that via [Reflection](https://agda.readthedocs.io/en/latest/language/reflection.html), see [this file](https://github.com/effectfully/random-stuff/blob/0857360c917a834a0473ab68fcf24c05960fc335/ThrowOnZero.agda))
 
-So in short, the eta-rule of `⊤` allows for convenient APIs when there are computation properties involved and it's fine to force upon the caller to specify enough info to make the property compute. In the above cases we only required a single argument to be in WHNF, but in other cases it can be necessary to have multiple arguments in [canonical form](https://ncatlab.org/nlab/show/canonical+form) (see [this Stackoverflow question and answer](https://stackoverflow.com/questions/33270639/so-whats-the-point) for an example).
+So in short, the eta-rule of `⊤` allows for convenient APIs when there are computational properties involved and it's fine to force upon the caller to specify enough info to make the property compute. In the above cases we only required a single argument to be in WHNF, but in other cases it can be necessary to have multiple arguments in [canonical form](https://ncatlab.org/nlab/show/canonical+form) (see [this Stackoverflow question and answer](https://stackoverflow.com/questions/33270639/so-whats-the-point) for an example).
 
-If we attempt to call ``_`div`_`` over TODO
+If we attempt to call ``_`div`_`` with the divisor argument not being in WHNF, we'll get yellow:
 
 ```agda
-  _`div-another`_ : ℕ -> ∀ m -> {m ≢0} -> ℕ
-  n `div-another` m = n `div` m
+  _ : ℕ -> ∀ m -> {m ≢0} -> ℕ
+  _ = λ n m -> n `div` m
 ```
 
+since it's not possible to infer the value of type `m ≢0` when the type is stuck and can't reduce to anything. Which is rather inconvenient as we now have to explicitly plumb (TODO: is that word fine?) the divisor-not-equal-to-zero proof through every functions that eventually defers to ``_`div`_``.
+
+```agda
+  data Promote {A : Set} : A -> Set where
+    promote : ∀ x -> Promote x
+
+  demote : {A : Set} {x : A} -> Promote x -> A
+  demote (promote x) = x
+
+  _`divᵖ`_ : ∀ {m} -> ℕ -> Promote (suc m) -> ℕ
+  _`divᵖ`_ {m} n _ = n `div-suc` m
+
+  _ : ∀ {m} -> ℕ -> Promote (suc m) -> ℕ
+  _ = λ n m -> n `divᵖ` m
+
+```
+
+```agda
+  _ : List.map (λ n -> n `divᵖ` promote 4) (0 ∷ 1 ∷ 2 ∷ 3 ∷ 4 ∷ 5 ∷ 6 ∷ 7 ∷ 8 ∷ 9 ∷ 10 ∷ 11 ∷ 12 ∷ [])
+    ≡                                      (0 ∷ 0 ∷ 0 ∷ 0 ∷ 1 ∷ 1 ∷ 1 ∷ 1 ∷ 2 ∷ 2 ∷ 2  ∷ 2  ∷ 3  ∷ [])
+  _ = refl
+```
+
+      -- zero !=< suc _m_1287 of type ℕ
+      -- when checking that the expression promote 0 has type
+      -- Promote (suc _m_1287)
+      _ : ∀ n -> n `divᵖ` promote 0 ≡ n `divᵖ` promote 0
+      _ = λ n -> refl
+
+```agda
+  listOfNumbers : List ℕ
+  listOfNumbers = 1 ∷ 2 ∷ 3 ∷ 4 ∷ []
+
+  firstNumber : ℕ
+  firstNumber with promote listOfNumbers
+  ... | promote (one ∷ _) = one
+```
+
+```agda
+  open import Data.Sum.Base
+  open import Data.Product
+
+  checkNonZero : ℕ -> Maybe (∃ (Promote ∘ suc))
+  checkNonZero  zero   = nothing
+  checkNonZero (suc n) = just (n , promote _)
+
+  checkNonZero-fancy : ∀ n -> n ≡ zero ⊎ (∃ λ m -> ∃ λ (nᵖ : Promote (suc m)) -> n ≡ demote nᵖ)
+  checkNonZero-fancy  zero   = inj₁ refl
+  checkNonZero-fancy (suc n) = inj₂ (n , _ , refl)
+
+  -- module _ {A : Set} (x : A) where
+  --   data Reflect : Set where
+  --     reflect : Reflect
+
+  data Reflect {A : Set} : A -> Set where
+    reflect : ∀ x -> Reflect x
+
+  magic : ∀ {n} -> Reflect (checkNonZero n) -> ℕ
+  magic {n} (reflect _) = n
+
+  -- checkNonZero-fancy : ∀ n -> n ≡ zero ⊎ (∃ λ m -> n ≡ suc m)
+  -- checkNonZero-fancy n with checkNonZero n | inspect checkNonZero n | reflect (magic (reflect (checkNonZero n)))
+  -- ... | nothing  | [ c ] | b = {!c!}
+  -- ... | just t | c | b = {!!}
+
+
+  -- checkNonZero-fancy : ∀ n -> n ≡ zero ⊎ (∃ λ m -> n ≡ suc m)
+  -- checkNonZero-fancy n with checkNonZero n | inspect checkNonZero n | reflect (magic (reflect (checkNonZero n)))
+  -- ... | nothing  | [ c ] | b = {!c!}
+  -- ... | just t | c | b = {!!}
+
+```
+
+
+TODO: matching on the value of a known spine by lifting to the type level
+https://stackoverflow.com/questions/56333541/can-i-use-the-normal-form-of-a-value-to-avoid-incomplete-pattern-matches-in-agda
+a.k.a. matching on a top-level value
 
 
 (in the cases above that mean
@@ -2114,9 +2191,3 @@ lazily match on index of a singleton, then match on the singleton where it's nee
 
   _ : 1OrDouble _ 0 ≡ 1
   _ = refl
-
-
-
-TODO: matching on the value of a known spine by lifting to the type level
-https://stackoverflow.com/questions/56333541/can-i-use-the-normal-form-of-a-value-to-avoid-incomplete-pattern-matches-in-agda
-a.k.a. matching on a top-level value
