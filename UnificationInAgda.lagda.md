@@ -1828,7 +1828,7 @@ Now instead of returning a `Maybe` we require the caller to provide a proof that
   n `div-original` suc m = just (n `div` suc m)
 ```
 
-There exist a bunch of blogposts advocating this style of programming:
+There exist a bunch of blogposts advocating a similar style of programming:
 
 1. [Parse, don't validate](https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/)
 2. [Type Safety Back and Forth](https://www.parsonsmatt.org/2017/10/11/type_safety_back_and_forth.html)
@@ -1870,7 +1870,27 @@ If we attempt to call ``_`div`_`` with the divisor argument not being in WHNF, w
   _ = λ n m -> n `div` m
 ```
 
-since it's not possible to infer the value of type `m ≢0` when the type is stuck and can't reduce to anything. Which is rather inconvenient as we now have to explicitly plumb (TODO: is that word fine?) the divisor-not-equal-to-zero proof through every functions that eventually defers to ``_`div`_``.
+since it's not possible to infer the value of type `m ≢0` when the type is stuck and can't reduce to anything. Which is rather inconvenient as we now have to explicitly thread the divisor-not-equal-to-zero proof through every function that eventually defers to ``_`div`_``. See the next section for an alternative solution.
+
+### Bonus: singletons
+
+Instead of checking if a value satisfies a certain predicate, we can sometimes provide that value in a [correct by construction](http://wiki.c2.com/?CorrectByConstruction) manner. In the case of division we need to ensure that the divisor is not zero, so we could have a special type of non-zero natural numbers for that:
+
+```agda
+  data ℕ₁ : Set where
+    suc₁ : ℕ -> ℕ₁
+```
+
+and define:
+
+```agda
+  _`div₁`_ : ℕ -> ℕ₁ -> ℕ
+  n `div₁` suc₁ m = n `div-suc` m
+```
+
+This is essentially what the "Parse, don't validate" approach referenced earlier is about.
+
+However in a dependently typed language we don't actually need to create a bespoke data type for the purpose of ensuring that a value is an application of a certain constructor. Instead we can define a singleton type that allows us to promote any value to the type level:
 
 ```agda
   data Promote {A : Set} : A -> Set where
@@ -1878,14 +1898,33 @@ since it's not possible to infer the value of type `m ≢0` when the type is stu
 
   demote : {A : Set} {x : A} -> Promote x -> A
   demote (promote x) = x
+```
 
+(there's only one value of type `Promote x`: `promote x` -- hence why it's called a singleton).
+
+Now the useful thing about this type is that it allows us to promote an arbitrary value to the type level, in particular we can promote an application of `suc` to a type variable:
+
+```agda
   _`divᵖ`_ : ∀ {m} -> ℕ -> Promote (suc m) -> ℕ
-  _`divᵖ`_ {m} n _ = n `div-suc` m
+  n `divᵖ` promote (suc m) = n `div-suc` m
+```
 
+This ensures that the second argument is `promote` applied to a natural number and that natural number is of the `suc m` form for some `m`, which is exactly the invariant that we want to express. Note how Agda does not ask to handle a
+
+      n `divᵖ` promote 0 = ?
+
+case, as it knows that this case cannot occur.
+
+We can check that the implicit `m` can be inferred without any problems:
+
+```agda
   _ : ∀ {m} -> ℕ -> Promote (suc m) -> ℕ
   _ = λ n m -> n `divᵖ` m
-
 ```
+
+which clearly has to be the case as `m` is an argument to a data constructor (`suc`) and the application (`suc m`) is an argument to a type constructor (`Promote`) and type and data constructors are inference-friendly due to being invertible as we discussed before.
+
+A test:
 
 ```agda
   _ : List.map (λ n -> n `divᵖ` promote 4) (0 ∷ 1 ∷ 2 ∷ 3 ∷ 4 ∷ 5 ∷ 6 ∷ 7 ∷ 8 ∷ 9 ∷ 10 ∷ 11 ∷ 12 ∷ [])
@@ -1893,236 +1932,50 @@ since it's not possible to infer the value of type `m ≢0` when the type is stu
   _ = refl
 ```
 
+An attempt to divide a number by `0` results in a readable type error (as opposed to an unsolved meta of type `⊥` as before):
+
       -- zero !=< suc _m_1287 of type ℕ
       -- when checking that the expression promote 0 has type
       -- Promote (suc _m_1287)
       _ : ∀ n -> n `divᵖ` promote 0 ≡ n `divᵖ` promote 0
       _ = λ n -> refl
 
-```agda
-  listOfNumbers : List ℕ
-  listOfNumbers = 1 ∷ 2 ∷ 3 ∷ 4 ∷ []
-
-  firstNumber : ℕ
-  firstNumber with promote listOfNumbers
-  ... | promote (one ∷ _) = one
-```
+And we can of course provide a function that tries to parse a natural number as an application of `suc` and either fails (when the number is `0`) or returns a `Promote (suc m)` for some `m`:
 
 ```agda
-  open import Data.Sum.Base
   open import Data.Product
 
   checkNonZero : ℕ -> Maybe (∃ (Promote ∘ suc))
   checkNonZero  zero   = nothing
   checkNonZero (suc n) = just (n , promote _)
-
-  checkNonZero-fancy : ∀ n -> n ≡ zero ⊎ (∃ λ m -> ∃ λ (nᵖ : Promote (suc m)) -> n ≡ demote nᵖ)
-  checkNonZero-fancy  zero   = inj₁ refl
-  checkNonZero-fancy (suc n) = inj₂ (n , _ , refl)
-
-  -- module _ {A : Set} (x : A) where
-  --   data Reflect : Set where
-  --     reflect : Reflect
-
-  data Reflect {A : Set} : A -> Set where
-    reflect : ∀ x -> Reflect x
-
-  magic : ∀ {n} -> Reflect (checkNonZero n) -> ℕ
-  magic {n} (reflect _) = n
-
-  -- checkNonZero-fancy : ∀ n -> n ≡ zero ⊎ (∃ λ m -> n ≡ suc m)
-  -- checkNonZero-fancy n with checkNonZero n | inspect checkNonZero n | reflect (magic (reflect (checkNonZero n)))
-  -- ... | nothing  | [ c ] | b = {!c!}
-  -- ... | just t | c | b = {!!}
-
-
-  -- checkNonZero-fancy : ∀ n -> n ≡ zero ⊎ (∃ λ m -> n ≡ suc m)
-  -- checkNonZero-fancy n with checkNonZero n | inspect checkNonZero n | reflect (magic (reflect (checkNonZero n)))
-  -- ... | nothing  | [ c ] | b = {!c!}
-  -- ... | just t | c | b = {!!}
-
 ```
 
-
-TODO: matching on the value of a known spine by lifting to the type level
-https://stackoverflow.com/questions/56333541/can-i-use-the-normal-form-of-a-value-to-avoid-incomplete-pattern-matches-in-agda
-a.k.a. matching on a top-level value
-
-
-(in the cases above that mean
-
-However such an API is only convenient
-
-
-
-
-
-
-
-
-
-
-is in  (i.e. `m` is a sequence of (possibly zero) applications of `suc` ending in `zero`. No functions, variables, postulates etc -- only the constructors of `ℕ`)
-
-
-If the divisor is zero, then `≢0` will reduce to `⊥` and you'll get a metavariable of this type (i.e. Agda will ask to explicitly provide an implicit value that cannot exist).
-
-
-
-
-`A` and `{_ : ⊤} -> A` are isomorphic.
+Finally, there's one more use case for `promote`. Let's say you have some statically known list of numbers
 
 ```agda
-  _ : {A : Set} -> A -> {_ : ⊤} -> A
-  _ = λ x -> x
-
-  _ : {A : Set} -> ({_ : ⊤} -> A) -> A
-  _ = λ x -> x
-
-  -- TODO: mention TypeError
-  -- TODO: parse don't validate reference (and the probably other two, including the recent one by Gonzalez)
-  -- TODO: mention brutal introduction to dependent types
+  listOfNumbers : List ℕ
+  listOfNumbers = 1 ∷ 2 ∷ 3 ∷ 4 ∷ []
 ```
 
-
--- TODO: talk about Is (suc m)
-
-
-### N-ary things
+and you want to extract the second one. Direct pattern matching does not work:
 
 ```agda
-  _ : (∀ {(A , B) : Set × Set} -> A -> B -> ℕ) -> ∀ {A B} -> A -> B -> ℕ
-  _ = λ f -> f
-
-  _ : (∀ {A B} -> A -> B -> ℕ) -> ∀ {(A , B) : Set × Set} -> A -> B -> ℕ
-  _ = λ f -> f
+  secondNumber-direct : ℕ
+  secondNumber-direct with listOfNumbers
+  ... | _ ∷ two ∷ _ = two
 ```
+
+Agda colors the matching line, 'cause it wants you to handle the `[]` and `_ ∷ []` cases as well. This is because internally a `with`-abstraction is translated to an auxiliary function and the actual pattern matching happens in this function, but at that point we've already generalized the specific list to a variable of type `List ℕ` and lost the information that the original list (that gets passed as an argument to the function) is of a particular spine.
+
+But we can preserve the information that the list is of a particular spine by reflecting that spine at the type level via `Promote`:
 
 ```agda
-module PolyvariadicZipEta where
-  open import Data.Vec.Base as Vec renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
-
-  record ⊤₁ : Set₁ where
-    constructor tt₁
-
-  -- This function is constructor-headed.
-  Sets : ℕ -> Set₁
-  Sets  0      = ⊤₁
-  Sets (suc n) = Set × Sets n
-
-  -- Since `Sets` is constructor-headed, `n` can be inferred from the explicit `Sets n` argument
-  -- and thus can be left implicit.
-  -- This function is constructor-headed.
-  mapSets : ∀ {n} -> (Set -> Set) -> Sets n -> Sets n
-  mapSets {0}     F  tt₁     = tt₁
-  mapSets {suc n} F (A , As) = F A , mapSets F As
-
-  -- `n` can be inferred from `Sets n` as well.
-  -- As before, this function is constructor/argument-headed.
-  ToFun : ∀ {n} -> Sets n -> Set -> Set
-  ToFun {0}      tt₁     B = B
-  ToFun {suc n} (A , As) B = A -> ToFun As B
-
-  -- As before, even though this function delegates to `ToFun`, it's constructor-headed
-  -- (as opposed to the constructor/argument-headed `ToFun`), because the `B` of `ToFun` gets
-  -- instantiated with `Vec B m` and so the two clauses of `ToFun` become disjoint (because `Vec`
-  -- and `->` are two different type constructors).
-  ToVecFun : ∀ {n} -> Sets n -> Set -> ℕ -> Set
-  ToVecFun As B m = ToFun (mapSets (λ A -> Vec A m) As) (Vec B m)
-
-  -- Here `Sets n` is implicit, so in order to infer `n` from it, Agda needs to be able to infer
-  -- `As`. As before, it's not possible to infer `As` from the type of the argument, but is
-  -- possible to infer it from the type of the result.
-  apN : ∀ {n B m} {As : Sets n} -> Vec (ToFun As B) m -> ToVecFun As B m
-  apN {0}     ys = ys
-  apN {suc n} fs = λ xs -> apN (fs ⊛ xs)
-
-  --
-  zipWithN : ∀ n {B m} {As : Sets n} -> ToFun As B -> ToVecFun As B m
-  zipWithN _ f = apN (Vec.replicate f)
-
-  _ : zipWithN _ 1 ≡ (1 ∷ᵥ 1 ∷ᵥ 1 ∷ᵥ []ᵥ)
-  _ = refl
-
-  _ : zipWithN _ suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ (2 ∷ᵥ 3 ∷ᵥ 4 ∷ᵥ []ᵥ)
-  _ = refl
-
-  _ : zipWithN _ _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
-  _ = refl
-
-
-
-  _ : zipWithN _ suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
-  _ = refl
-
-  _ : zipWithN _ {B = ℕ} suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
-  _ = refl
-
-
-
-
-  _ : zipWithN 1 suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
-  _ = refl
-
-  _ : zipWithN 2 _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
-  _ = refl
-
-  _ : zipWithN 2 _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
-  _ = refl
+  secondNumber : ℕ
+  secondNumber with promote listOfNumbers
+  ... | promote (_ ∷ two ∷ _) = two
 ```
 
-
-
-
-## Universe levels
-
-```agda
-module UniverseLevels where
-```
-
-There are a bunch of definitional equalities associated with universe levels. Without them universe polymorphism would be nearly unusable. Here are the equalities:
-
-```agda
-_ : ∀ {α} -> lzero ⊔ α ≡ α
-_ = refl
-
-_ : ∀ {α} -> α ⊔ α ≡ α
-_ = refl
-
-_ : ∀ {α} -> lsuc α ⊔ α ≡ lsuc α
-_ = refl
-
-_ : ∀ {α β} -> α ⊔ β ≡ β ⊔ α
-_ = refl
-
-_ : ∀ {α β γ} -> (α ⊔ β) ⊔ γ ≡ α ⊔ (β ⊔ γ)
-_ = refl
-
-_ : ∀ {α β} -> lsuc α ⊔ lsuc β ≡ lsuc (α ⊔ β)
-_ = refl
-```
-
-A demonstration of how Agda can greatly simplify level expressions using the above identites:
-
-```agda
-_ : ∀ {α β γ} -> lsuc α ⊔ (γ ⊔ lsuc (lsuc β)) ⊔ lzero ⊔ (β ⊔ γ) ≡ lsuc (α ⊔ lsuc β) ⊔ γ
-_ = refl
-```
-
-These special rules also give us an ability to define a less-than-or-equal-to relation on levels:
-
-```agda
-_≤ℓ_ : Level -> Level -> Set
-α ≤ℓ β = α ⊔ β ≡ β
-```
-
-which in turn allows to [emulate cumulativity of universes](http://effectfully.blogspot.com/2016/07/cumu.html) in Agda (although there is an experimental option [`--cumulativity`](https://agda.readthedocs.io/en/latest/language/cumulativity.html) that makes the universe hierarchy cumulative).
-
-The list of equalities shown above is not exhaustive. E.g. if during type checking Agda comes up with the following constraint:
-
-      α <= β <= α
-
-it gets solved as `α ≡ β`.
+which makes Agda accept the definition.
 
 
 
@@ -2132,62 +1985,226 @@ it gets solved as `α ≡ β`.
 
 
 
+-----------------
 
 
-{-
 
-## Inconvenient recursion
+-- `A` and `{_ : ⊤} -> A` are isomorphic.
 
-Vector.foldl
+-- ```agda
+--   _ : {A : Set} -> A -> {_ : ⊤} -> A
+--   _ = λ x -> x
 
-## A function is not dependent enough
+--   _ : {A : Set} -> ({_ : ⊤} -> A) -> A
+--   _ = λ x -> x
 
--- ᵏ′ : ∀ {α β} {A : Set α} {B : A -> Set β} -> (∀ {x} -> B x) -> ∀ x -> B x
--- ᵏ′ y x = y
-
-mention the Kipling paper
-
-## mention the Jigger
-
-## Talk about heterogeneous equality?
-
-## η-laws
-
-## auto
-
--- If (n ∸ m) is in canonical form,
--- then (n ≤ℕ m) reduces either to (⊤) or to (⊥).
--- The value of (⊤) can be inferred automatically,
--- which is exploited by the (ᵀ≤ᵀ) constructor of the (_≤_) datatype.
--- It would be nice to have a type error, when (n ≤ℕ m) reduces to (⊥).
-_≤ℕ_ : ℕ -> ℕ -> Set
-0     ≤ℕ _     = ⊤
-suc _ ≤ℕ 0     = ⊥
-suc n ≤ℕ suc m = n ≤ℕ m
+--   -- TODO: mention TypeError
+--   -- TODO: parse don't validate reference (and the probably other two, including the recent one by Gonzalez)
+--   -- TODO: mention brutal introduction to dependent types
+-- ```
 
 
-record Is {α} {A : Set α} (x : A) : Set α where
-  ¡ = x
-open Is
 
-! : ∀ {α} {A : Set α} -> (x : A) -> Is x
-! _ = _
+-- ### N-ary things
 
-_-⁺_ : ∀ {m} -> ℕ -> Is (suc m) -> ℕ
-n -⁺ im = n ∸ ¡ im
+-- ```agda
+--   _ : (∀ {(A , B) : Set × Set} -> A -> B -> ℕ) -> ∀ {A B} -> A -> B -> ℕ
+--   _ = λ f -> f
 
-## Inferring functions
+--   _ : (∀ {A B} -> A -> B -> ℕ) -> ∀ {(A , B) : Set × Set} -> A -> B -> ℕ
+--   _ = λ f -> f
+-- ```
 
-mention _% = _∘_?
+-- ```agda
+-- module PolyvariadicZipEta where
+--   open import Data.Vec.Base as Vec renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
 
-mention Jesper's work and the green slime problem?
+--   record ⊤₁ : Set₁ where
+--     constructor tt₁
 
-lazily match on index of a singleton, then match on the singleton where it's needed
+--   -- This function is constructor-headed.
+--   Sets : ℕ -> Set₁
+--   Sets  0      = ⊤₁
+--   Sets (suc n) = Set × Sets n
+
+--   -- Since `Sets` is constructor-headed, `n` can be inferred from the explicit `Sets n` argument
+--   -- and thus can be left implicit.
+--   -- This function is constructor-headed.
+--   mapSets : ∀ {n} -> (Set -> Set) -> Sets n -> Sets n
+--   mapSets {0}     F  tt₁     = tt₁
+--   mapSets {suc n} F (A , As) = F A , mapSets F As
+
+--   -- `n` can be inferred from `Sets n` as well.
+--   -- As before, this function is constructor/argument-headed.
+--   ToFun : ∀ {n} -> Sets n -> Set -> Set
+--   ToFun {0}      tt₁     B = B
+--   ToFun {suc n} (A , As) B = A -> ToFun As B
+
+--   -- As before, even though this function delegates to `ToFun`, it's constructor-headed
+--   -- (as opposed to the constructor/argument-headed `ToFun`), because the `B` of `ToFun` gets
+--   -- instantiated with `Vec B m` and so the two clauses of `ToFun` become disjoint (because `Vec`
+--   -- and `->` are two different type constructors).
+--   ToVecFun : ∀ {n} -> Sets n -> Set -> ℕ -> Set
+--   ToVecFun As B m = ToFun (mapSets (λ A -> Vec A m) As) (Vec B m)
+
+--   -- Here `Sets n` is implicit, so in order to infer `n` from it, Agda needs to be able to infer
+--   -- `As`. As before, it's not possible to infer `As` from the type of the argument, but is
+--   -- possible to infer it from the type of the result.
+--   apN : ∀ {n B m} {As : Sets n} -> Vec (ToFun As B) m -> ToVecFun As B m
+--   apN {0}     ys = ys
+--   apN {suc n} fs = λ xs -> apN (fs ⊛ xs)
+
+--   --
+--   zipWithN : ∀ n {B m} {As : Sets n} -> ToFun As B -> ToVecFun As B m
+--   zipWithN _ f = apN (Vec.replicate f)
+
+--   _ : zipWithN _ 1 ≡ (1 ∷ᵥ 1 ∷ᵥ 1 ∷ᵥ []ᵥ)
+--   _ = refl
+
+--   _ : zipWithN _ suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ (2 ∷ᵥ 3 ∷ᵥ 4 ∷ᵥ []ᵥ)
+--   _ = refl
+
+--   _ : zipWithN _ _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
+--   _ = refl
 
 
-  1OrDouble : Bool -> ℕ -> ℕ
-  1OrDouble false n = suc zero
-  1OrDouble true  n = 0 + 0
 
-  _ : 1OrDouble _ 0 ≡ 1
-  _ = refl
+--   _ : zipWithN _ suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
+--   _ = refl
+
+--   _ : zipWithN _ {B = ℕ} suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
+--   _ = refl
+
+
+
+
+--   _ : zipWithN 1 suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
+--   _ = refl
+
+--   _ : zipWithN 2 _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+--   _ = refl
+
+--   _ : zipWithN 2 _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+--   _ = refl
+-- ```
+
+
+
+
+-- ## Universe levels
+
+-- ```agda
+-- module UniverseLevels where
+-- ```
+
+-- There are a bunch of definitional equalities associated with universe levels. Without them universe polymorphism would be nearly unusable. Here are the equalities:
+
+-- ```agda
+-- _ : ∀ {α} -> lzero ⊔ α ≡ α
+-- _ = refl
+
+-- _ : ∀ {α} -> α ⊔ α ≡ α
+-- _ = refl
+
+-- _ : ∀ {α} -> lsuc α ⊔ α ≡ lsuc α
+-- _ = refl
+
+-- _ : ∀ {α β} -> α ⊔ β ≡ β ⊔ α
+-- _ = refl
+
+-- _ : ∀ {α β γ} -> (α ⊔ β) ⊔ γ ≡ α ⊔ (β ⊔ γ)
+-- _ = refl
+
+-- _ : ∀ {α β} -> lsuc α ⊔ lsuc β ≡ lsuc (α ⊔ β)
+-- _ = refl
+-- ```
+
+-- A demonstration of how Agda can greatly simplify level expressions using the above identites:
+
+-- ```agda
+-- _ : ∀ {α β γ} -> lsuc α ⊔ (γ ⊔ lsuc (lsuc β)) ⊔ lzero ⊔ (β ⊔ γ) ≡ lsuc (α ⊔ lsuc β) ⊔ γ
+-- _ = refl
+-- ```
+
+-- These special rules also give us an ability to define a less-than-or-equal-to relation on levels:
+
+-- ```agda
+-- _≤ℓ_ : Level -> Level -> Set
+-- α ≤ℓ β = α ⊔ β ≡ β
+-- ```
+
+-- which in turn allows to [emulate cumulativity of universes](http://effectfully.blogspot.com/2016/07/cumu.html) in Agda (although there is an experimental option [`--cumulativity`](https://agda.readthedocs.io/en/latest/language/cumulativity.html) that makes the universe hierarchy cumulative).
+
+-- The list of equalities shown above is not exhaustive. E.g. if during type checking Agda comes up with the following constraint:
+
+--       α <= β <= α
+
+-- it gets solved as `α ≡ β`.
+
+
+
+
+
+
+
+
+
+
+
+-- {-
+
+-- ## Inconvenient recursion
+
+-- Vector.foldl
+
+-- ## A function is not dependent enough
+
+-- -- ᵏ′ : ∀ {α β} {A : Set α} {B : A -> Set β} -> (∀ {x} -> B x) -> ∀ x -> B x
+-- -- ᵏ′ y x = y
+
+-- mention the Kipling paper
+
+-- ## mention the Jigger
+
+-- ## Talk about heterogeneous equality?
+
+-- ## η-laws
+
+-- ## auto
+
+-- -- If (n ∸ m) is in canonical form,
+-- -- then (n ≤ℕ m) reduces either to (⊤) or to (⊥).
+-- -- The value of (⊤) can be inferred automatically,
+-- -- which is exploited by the (ᵀ≤ᵀ) constructor of the (_≤_) datatype.
+-- -- It would be nice to have a type error, when (n ≤ℕ m) reduces to (⊥).
+-- _≤ℕ_ : ℕ -> ℕ -> Set
+-- 0     ≤ℕ _     = ⊤
+-- suc _ ≤ℕ 0     = ⊥
+-- suc n ≤ℕ suc m = n ≤ℕ m
+
+
+-- record Is {α} {A : Set α} (x : A) : Set α where
+--   ¡ = x
+-- open Is
+
+-- ! : ∀ {α} {A : Set α} -> (x : A) -> Is x
+-- ! _ = _
+
+-- _-⁺_ : ∀ {m} -> ℕ -> Is (suc m) -> ℕ
+-- n -⁺ im = n ∸ ¡ im
+
+-- ## Inferring functions
+
+-- mention _% = _∘_?
+
+-- mention Jesper's work and the green slime problem?
+
+-- lazily match on index of a singleton, then match on the singleton where it's needed
+
+
+--   1OrDouble : Bool -> ℕ -> ℕ
+--   1OrDouble false n = suc zero
+--   1OrDouble true  n = 0 + 0
+
+--   _ : 1OrDouble _ 0 ≡ 1
+--   _ = refl
