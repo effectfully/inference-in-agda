@@ -1922,7 +1922,7 @@ We can check that the implicit `m` can be inferred without any problems:
   _ = λ n m -> n `divᵖ` m
 ```
 
-which clearly has to be the case as `m` is an argument to a data constructor (`suc`) and the application (`suc m`) is an argument to a type constructor (`Promote`) and type and data constructors are inference-friendly due to being invertible as we discussed before.
+which clearly has to be the case as `m` is an argument to a data constructor (`suc`) and the application (`suc m`) is an argument to a type constructor (`Promote`) and type and data constructors are inference-friendly due to them being invertible as we discussed before.
 
 A test:
 
@@ -2167,31 +2167,7 @@ which makes Agda accept the definition.
 -- ## mention the Jigger
 
 -- ## Talk about heterogeneous equality?
-
--- ## η-laws
-
--- ## auto
-
--- -- If (n ∸ m) is in canonical form,
--- -- then (n ≤ℕ m) reduces either to (⊤) or to (⊥).
--- -- The value of (⊤) can be inferred automatically,
--- -- which is exploited by the (ᵀ≤ᵀ) constructor of the (_≤_) datatype.
--- -- It would be nice to have a type error, when (n ≤ℕ m) reduces to (⊥).
--- _≤ℕ_ : ℕ -> ℕ -> Set
--- 0     ≤ℕ _     = ⊤
--- suc _ ≤ℕ 0     = ⊥
--- suc n ≤ℕ suc m = n ≤ℕ m
-
-
--- record Is {α} {A : Set α} (x : A) : Set α where
---   ¡ = x
--- open Is
-
--- ! : ∀ {α} {A : Set α} -> (x : A) -> Is x
--- ! _ = _
-
--- _-⁺_ : ∀ {m} -> ℕ -> Is (suc m) -> ℕ
--- n -⁺ im = n ∸ ¡ im
+-- Talk about heteroindexed/telescopic equality?
 
 -- ## Inferring functions
 
