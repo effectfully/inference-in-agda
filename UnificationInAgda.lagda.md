@@ -1518,20 +1518,20 @@ still does not type check, because inlining `m` as `1` does not make `_+_` const
       zero  +1 = suc zero
       suc n +1 = suc (n +1)
 
-#### Example 2: polyvariadic `zip`
+#### Example 2: polyvariadic `zipWith`
 
 ```agda
-module PolyvariadicZip where
+module PolyvariadicZipWith where
   open import Data.List.Base as List
   open import Data.Vec.Base as Vec renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
 ```
 
 We can define this family of functions over vectors:
 
-      replicate : ∀ {n} → A → Vec A m
-      map : ∀ {n} → (A → B) → Vec A m → Vec B m
-      zipWith : ∀ {n} → (A → B → C) → Vec A m → Vec B m → Vec C m
-      zipWith3 : ∀ {n} → (A → B → C → D) → Vec A m → Vec B m → Vec C m → Vec D m
+      replicate : ∀ {m} → A → Vec A m
+      map : ∀ {m} → (A → B) → Vec A m → Vec B m
+      zipWith : ∀ {m} → (A → B → C) → Vec A m → Vec B m → Vec C m
+      zipWith3 : ∀ {m} → (A → B → C → D) → Vec A m → Vec B m → Vec C m → Vec D m
 
 (the Agda stdlib provides all of those but the last one)
 
@@ -1631,7 +1631,6 @@ If we omit the resulting vector, we'll get yellow:
 ```agda
   _ : zipWithN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
   _ = refl
-
 ```
 
 as a standlone
@@ -1656,7 +1655,16 @@ And hence we can omit the resulting vector, if `B` is specified, because knowing
   _ = refl
 ```
 
-Omitting an argument also results in metas not being resolved:
+We don't need to invert `ToFun` when the _spine_ of `As` is provided explicitly:
+
+```agda
+  _ : zipWithN {As = _ ∷ _ ∷ []} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+  _ = refl
+```
+
+as Agda only needs to know the spine of `As` and not the actual types stored in the list in order for `ToFun` to compute (since `ToFun` is defined by pattern matching on the spine of its argument and so the actual elements of the list are computationally irrelevant). `ToFun (_A₁ ∷ _A₂ ∷ []) _B` computes to `_A₁ -> _A₂ -> _B` and unifying that type with `ℕ -> ℕ -> ℕ` is a trivial task.
+
+Omitting an argument results in metas not being resolved:
 
 ```agda
   _ : zipWithN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) _ ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
@@ -1680,7 +1688,7 @@ And specifying `B` doesn't help in this case:
   _ = refl
 ```
 
-Finally, note that constructor-headedness is compositional. The
+Finally that constructor-headedness is compositional. The
 
       ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
 
@@ -1784,7 +1792,7 @@ Supporting eta-equality for sum types is [possible in theory](https://ncatlab.or
 
 Eta-rules for records may seem not too exciting, but there are a few important use cases.
 
-### Computing predicates
+### Computing predicates: division
 
 Consider the division function (defined by repeated subtraction in a slightly weird way to please the termination checker):
 
@@ -2004,13 +2012,26 @@ But we can preserve the information that the list is of a particular spine by re
 
 which makes Agda accept the definition.
 
+### Generating type-level data: polyvariadic `zipWith`
 
-
-### N-ary things
+> We don't need to invert `ToFun` when the _spine_ of `As` is provided explicitly:
+>
+> ```agda
+>   _ : zipWithN {As = _ ∷ _ ∷ []} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+>   _ = refl
+> ```
+>
+> as Agda only needs to know the spine of `As` and not the actual types stored in the list in order for `ToFun` to compute (since `ToFun` is defined by pattern matching on the spine of its argument and so the actual elements of the list are computationally irrelevant). `ToFun (_A₁ ∷ _A₂ ∷ []) _B` computes to `_A₁ -> _A₂ -> _B` and unifying that type with `ℕ -> ℕ -> ℕ` is a trivial task.
 
 ```agda
-module PolyvariadicZipEta where
+module PolyvariadicZipWithEta where
   open import Data.Vec.Base as Vec renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
+```
+
+In the `PolyvariadicZipWith` module we considered
+
+
+```agda
 
   record ⊤₁ : Set₁ where
     constructor tt₁
