@@ -2014,6 +2014,13 @@ which makes Agda accept the definition.
 
 ### Generating type-level data: polyvariadic `zipWith`
 
+```agda
+module PolyvariadicZipWithEta where
+  open import Data.Vec.Base as Vec renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
+```
+
+Recall this reasoning from the `PolyvariadicZipWith` module:
+
 > We don't need to invert `ToFun` when the _spine_ of `As` is provided explicitly:
 >
 > ```agda
@@ -2023,16 +2030,9 @@ which makes Agda accept the definition.
 >
 > as Agda only needs to know the spine of `As` and not the actual types stored in the list in order for `ToFun` to compute (since `ToFun` is defined by pattern matching on the spine of its argument and so the actual elements of the list are computationally irrelevant). `ToFun (_A₁ ∷ _A₂ ∷ []) _B` computes to `_A₁ -> _A₂ -> _B` and unifying that type with `ℕ -> ℕ -> ℕ` is a trivial task.
 
-```agda
-module PolyvariadicZipWithEta where
-  open import Data.Vec.Base as Vec renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
-```
-
-In the `PolyvariadicZipWith` module we considered
-
+Can we somehow make that more ergonomic and allow the user to specify the length of the list of types (i.e. just a number) instead of the spine of that list, which is awkward? One option is to still use a list of types, but provide a wrapper that receives a natural number and turns every `suc` into a `∀` binding a type. All types bound this way then get fed one by one to a continuation that assembles them in a list and once `zero` is reached the wrapper calls the original function and passes the collected list of types as an argument. This is what they do in the [Arity-Generic Datatype-Generic Programming](http://www.seas.upenn.edu/~sweirich/papers/aritygen.pdf) paper. However this approach is tedious as it introduces a level of indirection that makes it harder to prove things about n-ary functions defined this way (and generally handle them at the type level). It also doesn't play well with universe polymorphism, since in order to handle an n-ary function receiving arguments lying in different universes we need another data structure storing the level of each of the universes and making that structure also a list entails the necessity to provide another wrapper on top of the existing one, which is just a mess. TODO: reference my n-ary comp
 
 ```agda
-
   record ⊤₁ : Set₁ where
     constructor tt₁
 
