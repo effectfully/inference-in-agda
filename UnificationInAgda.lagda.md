@@ -2021,18 +2021,23 @@ module PolyvariadicZipWithEta where
 
 Recall this reasoning from the `PolyvariadicZipWith` module:
 
+TODO: check formatting
+
 > We don't need to invert `ToFun` when the _spine_ of `As` is provided explicitly:
 >
-> ```agda
->   _ : zipWithN {As = _ ∷ _ ∷ []} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
->   _ = refl
-> ```
+>       _ : zipWithN {As = _ ∷ _ ∷ []} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+>       _ = refl
 >
 > as Agda only needs to know the spine of `As` and not the actual types stored in the list in order for `ToFun` to compute (since `ToFun` is defined by pattern matching on the spine of its argument and so the actual elements of the list are computationally irrelevant). `ToFun (_A₁ ∷ _A₂ ∷ []) _B` computes to `_A₁ -> _A₂ -> _B` and unifying that type with `ℕ -> ℕ -> ℕ` is a trivial task.
 
-Can we somehow make that more ergonomic and allow the user to specify the length of the list of types (i.e. just a number) instead of the spine of that list, which is awkward? One option is to still use a list of types, but provide a wrapper that receives a natural number and turns every `suc` into a `∀` binding a type. All types bound this way then get fed one by one to a continuation that assembles them in a list and once `zero` is reached the wrapper calls the original function and passes the collected list of types as an argument. This is what they do in the [Arity-Generic Datatype-Generic Programming](http://www.seas.upenn.edu/~sweirich/papers/aritygen.pdf) paper. However this approach is tedious as it introduces a level of indirection that makes it harder to prove things about n-ary functions defined this way (and generally handle them at the type level). It also doesn't play well with universe polymorphism, since in order to handle an n-ary function receiving arguments lying in different universes we need another data structure storing the level of each of the universes and making that structure also a list entails the necessity to provide another wrapper on top of the existing one, which is just a mess. TODO: reference my n-ary comp
+Can we somehow make that more ergonomic and allow the user to specify the length of the list of types (i.e. just a number) instead of the spine of that list, which is awkward? One option is to still use a list of types, but provide a wrapper that receives a natural number and turns every `suc` into a `∀` binding a type. All types bound this way then get fed one by one to a continuation that assembles them in a list and once `zero` is reached the wrapper calls the original function and passes the collected list of types as an argument. This is what they do in the [Arity-Generic Datatype-Generic Programming](http://www.seas.upenn.edu/~sweirich/papers/aritygen.pdf) paper. However this approach is rather tedious as it introduces a level of indirection that makes it harder to prove things about n-ary functions defined this way (and generally handle them at the type level). It also doesn't play well with universe polymorphism, since in order to handle an n-ary function receiving arguments lying in different universes we need another data structure storing the level of each of the universes and making that structure also a list entails the necessity to provide another wrapper on top of the existing one, which is just a mess.
+
+TODO: reference my n-ary comp
+
+What we can do instead is store types in an inference-friendly data structure like this one:
 
 ```agda
+  -- Same as `⊤`, but lives in `Set₁` rather than `Set`.
   record ⊤₁ : Set₁ where
     constructor tt₁
 
@@ -2040,7 +2045,94 @@ Can we somehow make that more ergonomic and allow the user to specify the length
   Sets : ℕ -> Set₁
   Sets  0      = ⊤₁
   Sets (suc n) = Set × Sets n
+```
 
+`Sets n` computes to the `n`-ary product of `Set`s, for example `Sets 3` reduces to `Set × Set × Set × ⊤₁`. I.e. `Sets n` is isomorphic to `Vec Set n`, but since the former computes to a bunch of products and Agda has eta-rules for those, inferring a whole `Sets n` value amounts only to inferring each particular type from that structure, which is not the case for `Vec Set n`: we know that `n` does determine the spine of the vector, but Agda does not attempt to infer that spine. Observe:
+
+```agda
+  ToFunᵥ : ∀ {n} -> Vec Set n -> Set -> Set
+  ToFunᵥ  []ᵥ      B = B
+  ToFunᵥ (A ∷ᵥ As) B = A -> ToFunᵥ As B
+
+  idNᵥ : ∀ {B} n {As : Vec Set n} -> ToFunᵥ As B -> ToFunᵥ As B
+  idNᵥ _ y = y
+
+  _ = idNᵥ 2 _+_
+```
+
+`idNᵥ` is an n-ary function receiving some (possibly 0-ary) function and returning it back. `n` specifies how many arguments that function receives.
+
+`idNᵥ 2 _+_` reads as "`idNᵥ` applied to `2` specifying that the next argument is going to be a function of two arguments, and that argument is `_+_`".
+
+Even though that we know that we've specified enough information to determine what `As` is, `idNᵥ 2 _+_` is yellow nevertheless. We can make it type check by explicitly providing the spine of `As`:
+
+```agda
+  _ = idNᵥ 2 {_ ∷ᵥ _ ∷ᵥ []ᵥ} _+_
+```
+
+"But `2` determines that spine!" -- well, yes, but Agda doesn't see that.
+
+We can force Agda to infer the spine of the vector by using a constructor-headed function matching on the vector and returning its length. We then need to equate the result of that function with the actual length provided as the `n` argument. The function looks like this:
+
+```agda
+  length-deep : ∀ {n} -> Vec Set n -> ℕ
+  length-deep  []ᵥ      = 0
+  length-deep (_ ∷ᵥ xs) = suc (length-deep xs)
+```
+
+The idea is that since we know the length of the vector (by means of it being provided as an argument) and `length-deep` returns precisely that length, we can make Agda invert the constructor-headed `length-deep` (and thus infer the spine of the vector) by unifying the provided and the computed lengths. However that last unification part is tricky: in Haskell one can just use `~` (see [GHC User's Guide](https://downloads.haskell.org/~ghc/8.8.4/docs/html/users_guide/glasgow_exts.html#equality-constraints)) and that will force unification at the call site (or require the constraint to bubble up), but Agda doesn't seem to have an analogous primitive. We can cook it up from instance arguments though, but first here's an explicit version:
+
+```agda
+  idNᵥₑ : ∀ {B} n {As : Vec Set n} -> length-deep As ≡ n -> ToFunᵥ As B -> ToFunᵥ As B
+  idNᵥₑ _ _ y = y
+```
+
+`idNᵥₑ` does not use the equality proof that it asks for, but the caller has to provide a proof anyway and so `refl` provided as a proof will force unification of `length-deep As` and `n` as Agda has to check that those two terms are actually the same thing (as `refl` claims them to be). And this unification is the only thing we need to get `length-deep` inverted and thus the spine of `As` inferred. We can check that there's indeed no yellow now:
+
+```agda
+  _ = idNᵥₑ 2 refl _+_
+```
+
+Of course providing `refl` manually is laborious and since it's the only constructor of `_≡_` we can ask Agda to come up with that constructor automatically via instance arguments:
+
+```agda
+  idNᵥᵢ : ∀ {B} n {As : Vec Set n} -> {{infer As ≡ n}} -> ToFunᵥ As B -> ToFunᵥ As B
+  idNᵥᵢ _ y = y
+```
+
+It's nearly the same function as the previous one, but now Agda implicitly inserts `refl` instead of asking the user to insert it explicitly. A test:
+
+```agda
+  _ = idNᵥᵢ 2 _+_
+```
+
+
+
+
+
+
+Here we see yellow in the . We know that we'
+
+```agda
+  -- `n` can be inferred from `Sets n` as well.
+  -- As before, this function is constructor/argument-headed.
+  ToFun : ∀ {n} -> Sets n -> Set -> Set
+  ToFun {0}      tt₁     B = B
+  ToFun {suc n} (A , As) B = A -> ToFun As B
+
+  idN : ∀ {B} n {As : Sets n} -> ToFun As B -> ToFun As B
+  idN _ y = y
+
+  _ = idN 2 _+_
+```
+
+
+
+but the former has a nice property that a value of type `Sets n` can be inferred if it's used in an inference-friendly, while
+
+
+
+```agda
   -- Since `Sets` is constructor-headed, `n` can be inferred from the explicit `Sets n` argument
   -- and thus can be left implicit.
   -- This function is constructor-headed.
@@ -2048,11 +2140,6 @@ Can we somehow make that more ergonomic and allow the user to specify the length
   mapSets {0}     F  tt₁     = tt₁
   mapSets {suc n} F (A , As) = F A , mapSets F As
 
-  -- `n` can be inferred from `Sets n` as well.
-  -- As before, this function is constructor/argument-headed.
-  ToFun : ∀ {n} -> Sets n -> Set -> Set
-  ToFun {0}      tt₁     B = B
-  ToFun {suc n} (A , As) B = A -> ToFun As B
 
   -- As before, even though this function delegates to `ToFun`, it's constructor-headed
   -- (as opposed to the constructor/argument-headed `ToFun`), because the `B` of `ToFun` gets
