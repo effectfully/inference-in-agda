@@ -1453,7 +1453,7 @@ Quoting the [changelog](https://github.com/agda/agda/blob/064095e14042bdf64c7d7c
 >       []       ++ ys = ys
 >       (x ∷ xs) ++ ys = x ∷ (xs ++ ys)
 >
-> Agda can now solve constraints like ?X ++ ys == 1 ∷ ys when ys is a neutral term.
+> Agda can now solve constraints like `?X ++ ys == 1 ∷ ys` when `ys` is a neutral term.
 
 #### Example 1: back to `idᵥ⁺`
 
@@ -1469,7 +1469,7 @@ Now if we come back to this example:
 </pre>
 </blockquote>
 
-but if define `idᵥ⁺` over `_+_` rather than `_+′_`:
+but define `idᵥ⁺` over `_+_` rather than `_+′_`:
 
 ```agda
   idᵥ⁺ : ∀ {A n m} -> Vec A (n + m) -> Vec A (n + m)
@@ -1482,7 +1482,7 @@ then supplying only `m` explicitly:
   _ = λ n m (xs : Vec ℕ (n + m)) -> idᵥ⁺ {m = m} xs
 ```
 
-satisfies the type checker.
+satisfies the type checker due to `_+_` being constructor/argument-headed.
 
 And
 
@@ -1518,7 +1518,7 @@ still does not type check, because inlining `m` as `1` does not make `_+_` const
       zero  +1 = suc zero
       suc n +1 = suc (n +1)
 
-#### Example 2: polyvariadic `zipWith`
+#### Example 2: polyvariadic `zipWith`: list-based
 
 ```agda
 module PolyvariadicZipWith where
@@ -1930,9 +1930,6 @@ However in a dependently typed language we don't actually need to create a bespo
 ```agda
   data Promote {A : Set} : A -> Set where
     promote : ∀ x -> Promote x
-
-  demote : {A : Set} {x : A} -> Promote x -> A
-  demote (promote x) = x
 ```
 
 (there's only one value of type `Promote x`: `promote x` -- hence why it's called a singleton).
@@ -2012,18 +2009,20 @@ But we can preserve the information that the list is of a particular spine by re
 
 which makes Agda accept the definition.
 
-### Generating type-level data: polyvariadic `zipWith`
+### Generating type-level data
+
+-- TODO: make two modules
 
 ```agda
 module PolyvariadicZipWithEta where
   open import Data.Vec.Base as Vec renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
 ```
 
+#### Polyvariadic `zipWith`: a no go
+
 Recall this reasoning from the `PolyvariadicZipWith` module:
 
-TODO: check formatting
-
-> We don't need to invert `ToFun` when the _spine_ of `As` is provided explicitly:
+> We don't need `ToFun` to be invertible when the _spine_ of `As` is provided explicitly:
 >
 >       _ : zipWithN {As = _ ∷ _ ∷ []} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
 >       _ = refl
@@ -2032,22 +2031,9 @@ TODO: check formatting
 
 Can we somehow make that more ergonomic and allow the user to specify the length of the list of types (i.e. just a number) instead of the spine of that list, which is awkward? One option is to still use a list of types, but provide a wrapper that receives a natural number and turns every `suc` into a `∀` binding a type. All types bound this way then get fed one by one to a continuation that assembles them in a list and once `zero` is reached the wrapper calls the original function and passes the collected list of types as an argument. This is what they do in the [Arity-Generic Datatype-Generic Programming](http://www.seas.upenn.edu/~sweirich/papers/aritygen.pdf) paper. However this approach is rather tedious as it introduces a level of indirection that makes it harder to prove things about n-ary functions defined this way (and generally handle them at the type level). It also doesn't play well with universe polymorphism, since in order to handle an n-ary function receiving arguments lying in different universes we need another data structure storing the level of each of the universes and making that structure also a list entails the necessity to provide another wrapper on top of the existing one, which is just a mess.
 
-TODO: reference my n-ary comp
+One idea that comes to mind is to store types in a vector rather than a list. A vector is indexed by its length, so if we explicitly provide the length of a vector, Agda will be able to infer its spine and we won't need to specify it explicitly, right? Not quite.
 
-What we can do instead is store types in an inference-friendly data structure like this one:
-
-```agda
-  -- Same as `⊤`, but lives in `Set₁` rather than `Set`.
-  record ⊤₁ : Set₁ where
-    constructor tt₁
-
-  -- This function is constructor-headed.
-  Sets : ℕ -> Set₁
-  Sets  0      = ⊤₁
-  Sets (suc n) = Set × Sets n
-```
-
-`Sets n` computes to the `n`-ary product of `Set`s, for example `Sets 3` reduces to `Set × Set × Set × ⊤₁`. I.e. `Sets n` is isomorphic to `Vec Set n`, but since the former computes to a bunch of products and Agda has eta-rules for those, inferring a whole `Sets n` value amounts only to inferring each particular type from that structure, which is not the case for `Vec Set n`: we know that `n` does determine the spine of the vector, but Agda does not attempt to infer that spine. Observe:
+Having these definitions:
 
 ```agda
   ToFunᵥ : ∀ {n} -> Vec Set n -> Set -> Set
@@ -2056,15 +2042,15 @@ What we can do instead is store types in an inference-friendly data structure li
 
   idNᵥ : ∀ {B} n {As : Vec Set n} -> ToFunᵥ As B -> ToFunᵥ As B
   idNᵥ _ y = y
+```
 
+(`idNᵥ` receives an n-ary function and returns it back. `n` specifies how many arguments that function takes) we can check if `As` is inferrable in `idNᵥ`:
+
+```agda
   _ = idNᵥ 2 _+_
 ```
 
-`idNᵥ` is an n-ary function receiving some (possibly 0-ary) function and returning it back. `n` specifies how many arguments that function receives.
-
-`idNᵥ 2 _+_` reads as "`idNᵥ` applied to `2` specifying that the next argument is going to be a function of two arguments, and that argument is `_+_`".
-
-Even though that we know that we've specified enough information to determine what `As` is, `idNᵥ 2 _+_` is yellow nevertheless. We can make it type check by explicitly providing the spine of `As`:
+Nope, it's not. Even though we know that we've specified enough information to determine what `As` is, we see yellow nevertheless. But if the spine of `As` is provided explicitly, then everything type checks:
 
 ```agda
   _ = idNᵥ 2 {_ ∷ᵥ _ ∷ᵥ []ᵥ} _+_
@@ -2093,10 +2079,10 @@ The idea is that since we know the length of the vector (by means of it being pr
   _ = idNᵥₑ 2 refl _+_
 ```
 
-Of course providing `refl` manually is laborious and since it's the only constructor of `_≡_` we can ask Agda to come up with that constructor automatically via instance arguments:
+Of course providing `refl` manually is laborious and since it's the only constructor of `_≡_` we can ask Agda to come up with it automatically via instance arguments:
 
 ```agda
-  idNᵥᵢ : ∀ {B} n {As : Vec Set n} -> {{infer As ≡ n}} -> ToFunᵥ As B -> ToFunᵥ As B
+  idNᵥᵢ : ∀ {B} n {As : Vec Set n} -> {{length-deep As ≡ n}} -> ToFunᵥ As B -> ToFunᵥ As B
   idNᵥᵢ _ y = y
 ```
 
@@ -2106,12 +2092,28 @@ It's nearly the same function as the previous one, but now Agda implicitly inser
   _ = idNᵥᵢ 2 _+_
 ```
 
+Summarizing, `Vec` is as inference-friendly as `List` (i.e. not very friendly) when it comes to n-ary operations (we could use the same equate-the-expected-length-with-the-provided-one trick for `List` as well). And it's also impossible to store types from different universes in a `Vec`.
 
+But there's a better way to store types.
 
+#### Polyvariadic `zipWith`: eta-based
 
+Here's an inference-friendly data structure:
 
+```agda
+  -- Same as `⊤`, but lives in `Set₁` rather than `Set`.
+  record ⊤₁ : Set₁ where
+    constructor tt₁
 
-Here we see yellow in the . We know that we'
+  -- This function is constructor-headed.
+  Sets : ℕ -> Set₁
+  Sets  0      = ⊤₁
+  Sets (suc n) = Set × Sets n
+```
+
+`Sets n` computes to the `n`-ary product of `Set`s, for example `Sets 3` reduces to `Set × Set × Set × ⊤₁`. I.e. `Sets n` is isomorphic to `Vec Set n`, but since the former computes to a bunch of products and Agda has eta-rules for those, inferring a whole `Sets n` value amounts only to inferring each particular type from that structure, which is not the case for `Vec Set n` as we've seen previously (we know that `n` does determine the spine of a `Vec`, but Agda does not attempt to infer that spine).
+
+Here's a quick test that `Sets` does have better inference properties than `Vec`:
 
 ```agda
   -- `n` can be inferred from `Sets n` as well.
@@ -2126,11 +2128,9 @@ Here we see yellow in the . We know that we'
   _ = idN 2 _+_
 ```
 
+Type checks perfectly.
 
-
-but the former has a nice property that a value of type `Sets n` can be inferred if it's used in an inference-friendly, while
-
-
+Now we can proceed to defining `Sets`-based polyvariadic `zipWith`. For that we'll neeed a way to map elements of a `Sets` with a function:
 
 ```agda
   -- Since `Sets` is constructor-headed, `n` can be inferred from the explicit `Sets n` argument
@@ -2139,8 +2139,11 @@ but the former has a nice property that a value of type `Sets n` can be inferred
   mapSets : ∀ {n} -> (Set -> Set) -> Sets n -> Sets n
   mapSets {0}     F  tt₁     = tt₁
   mapSets {suc n} F (A , As) = F A , mapSets F As
+```
 
+And the rest is the same as the previous version except `List` is replaced by `Sets n`:
 
+```agda
   -- As before, even though this function delegates to `ToFun`, it's constructor-headed
   -- (as opposed to the constructor/argument-headed `ToFun`), because the `B` of `ToFun` gets
   -- instantiated with `Vec B m` and so the two clauses of `ToFun` become disjoint (because `Vec`
@@ -2155,10 +2158,13 @@ but the former has a nice property that a value of type `Sets n` can be inferred
   apN {0}     ys = ys
   apN {suc n} fs = λ xs -> apN (fs ⊛ xs)
 
-  --
   zipWithN : ∀ n {B m} {As : Sets n} -> ToFun As B -> ToVecFun As B m
   zipWithN _ f = apN (Vec.replicate f)
+```
 
+We can check that all previous tests still pass. No need to specify `n` when when all arguments and the result are explicitly provided (which makes it possible for Agda to invert `ToVecFun` and infer `As`, as before)
+
+```agda
   _ : zipWithN _ 1 ≡ (1 ∷ᵥ 1 ∷ᵥ 1 ∷ᵥ []ᵥ)
   _ = refl
 
@@ -2167,18 +2173,21 @@ but the former has a nice property that a value of type `Sets n` can be inferred
 
   _ : zipWithN _ _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
   _ = refl
+```
 
+No need to specify `n` when either `B` or the spine of `As` is specified (which makes it possible for Agda to invert `ToFun` and infer `As`, as before)
 
-
-  _ : zipWithN _ suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
-  _ = refl
-
+```agda
   _ : zipWithN _ {B = ℕ} suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
   _ = refl
 
+  _ : zipWithN _ {As = _ , _ , tt₁} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+  _ = refl
+```
 
+But now we can also just specify the arity (`n`) of the zipping function without specifying `B` or the spine of `As` as the spine of `As` can be inferred from `n` due to `Sets` being defined by pattern matching on `n` and computing to an `n`-ary product (which is inference-friendly due to the eta-rule of `_×_`):
 
-
+```agda
   _ : zipWithN 1 suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
   _ = refl
 
@@ -2189,6 +2198,16 @@ but the former has a nice property that a value of type `Sets n` can be inferred
   _ = refl
 ```
 
+This approach generalizes to dependenty-typed functions as well as full universe polymorpism, see this [Stack Overflow question and answer](https://stackoverflow.com/q/29179508/3237465) for an elaborated example. And it's possible to write a general machinery that supports both non-dependent and dependent n-ary functions, see this [blog post](http://effectfully.blogspot.com/2016/04/generic-universe-polymorphic.html).
+
+
+```agda
+  _ : zipWithN _ suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
+  _ = refl
+```
+
+
+TODO: reference my n-ary comp
 
 
 
