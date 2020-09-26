@@ -128,6 +128,31 @@ You can even interleave implicit and expicit arguments and partial applications 
   _ = const true
 ```
 
+Finally, you don't need to specify a type signature for an alias, even if that alias has a different fixity than what it's defined in terms of. My favourite example is this:
+
+```agda
+  _∘ = _∘_
+```
+
+"What's that?" -- you might ask. It's an operator that allows us to compose a function with an n-ary function. In Haskell we have libraries like [composition](https://hackage.haskell.org/package/composition) that define a bunch of n-ary composition operators like
+
+      (.*) :: (c -> d) -> (a -> b -> c) -> a -> b -> d
+      (.**) :: (d -> e) -> (a -> b -> c -> d) -> a -> b -> c -> e
+      etc
+
+but in Agda we can get away with a single additional postfix operator and construct all of the above on the fly. For example:
+
+```agda
+  -- Composing `suc` with 2-ary `_+_`
+  _ = suc ∘ ∘ _+_
+
+  -- Composing `suc` with some random 3-ary function.
+  _ = suc ∘ ∘ ∘ f where
+    f = λ (x y z : ℕ) -> 0
+```
+
+Note that `_∘` and `_∘_` are two different operators (in particular, the former is postfix and the latter is infix) that happen to be called the same. We could have called `_∘` differently of course, but since Agda is able to distinguish between the two based on how they're used (there's no `∘_` and so Agda knows that the only way to parse `suc ∘ ∘ ∘ f` is `(suc ∘) ∘) ∘ f`, which is exactly what one'd write in Haskell), it's just nice to make the two operators share the name.
+
 ## `let`, `where`, `mutual`
 
 ```agda
@@ -941,7 +966,7 @@ but the final definition gives an error:
 
 That's because `reverse-go` is appled to `[]ᵥ` of type `Vec A 0` and `xs` of type `Vec A n`, so it returns a `Vec A (n + 0)`, which is not definitionally the same thing as `Vec A n`. We could prove that `n + 0` equals `n` for any `n` and use that proof to rewrite `Vec A (n + 0)` into `Vec A n`, but that would make it harder to prove properties about `reverse` defined this way.
 
-The usual way of approaching this problem is by generalizing the helper. In the case of `reverse` we can generalize the helper to the regular `foldl` function and define `reverse` in terms of that -- that's what [they do](https://github.com/agda/agda-stdlib/blob/7c8c17b407c14c5828b8755abb7584a4878286da/src/Data/Vec/Base.agda#L270-L271) in the standard library. Also see [this Stack Overflow question and answer](https://stackoverflow.com/questions/33345899/how-to-enumerate-the-elements-of-a-list-by-fins-in-linear-time) for a more complex example. Anyway, end of digression.
+The usual way of approaching this problem is by generalizing the helper. In the case of `reverse` we can generalize the helper to the regular `foldl` function and define `reverse` in terms of that -- that's what [they do](https://github.com/agda/agda-stdlib/blob/7c8c17b407c14c5828b8755abb7584a4878286da/src/Data/Vec/Base.agda#L270-L271) in the standard library. See [this Stack Overflow question and answer](https://stackoverflow.com/questions/33345899/how-to-enumerate-the-elements-of-a-list-by-fins-in-linear-time) for a more complex and elaborated example. Anyway, end of digression.
 
 Agda looks under lambdas when reducing an expression, so for example `λ n -> 1 + n` and `λ n -> suc n` are two definitionally equal terms:
 
@@ -2292,12 +2317,6 @@ it gets solved as `α ≡ β`.
 
 
 
-{-
-
-## Inconvenient recursion
-
-Vector.foldl
-
 ## A function is not dependent enough
 
 -- ᵏ′ : ∀ {α β} {A : Set α} {B : A -> Set β} -> (∀ {x} -> B x) -> ∀ x -> B x
@@ -2311,17 +2330,3 @@ mention the Kipling paper
 Talk about heteroindexed/telescopic equality?
 
 ## Inferring functions
-
-mention _% = _∘_?
-
-mention Jesper's work and the green slime problem?
-
-lazily match on index of a singleton, then match on the singleton where it's needed
-
-
-  1OrDouble : Bool -> ℕ -> ℕ
-  1OrDouble false n = suc zero
-  1OrDouble true  n = 0 + 0
-
-  _ : 1OrDouble _ 0 ≡ 1
-  _ = refl
