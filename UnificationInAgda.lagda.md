@@ -494,8 +494,8 @@ There is a notorious bug that has been in Agda for ages (even since its creation
 
 - tracked in [this issue](https://github.com/agda/agda/issues/1079)
 - discussed in detail in [this issue](https://github.com/agda/agda/issues/2099)
-- there even an entire [MSc thesis](http://www2.tcs.ifi.lmu.de/~abel/MScThesisJohanssonLloyd.pdf) about it
-- and a [possible solution](https://github.com/AndrasKovacs/elaboration-zoo/tree/master/experimental/poly-instantiation)
+- there's even an entire [MSc thesis](http://www2.tcs.ifi.lmu.de/~abel/MScThesisJohanssonLloyd.pdf) about it
+- and a [plausible solution](https://github.com/AndrasKovacs/implicit-fun-elaboration/blob/master/paper.pdf)
 
 So while the turn-implicits-into-metas approach works well, it has its edge cases. In practice, it's not a big deal to insert an implicit lambda to circumvent the bug, but it's not always clear that Agda throws a type error because of this bug and not due to something else (e.g. I was completely lost in [this case](https://github.com/agda/agda/issues/1095)). So beware.
 
@@ -774,7 +774,7 @@ We'll denote "`X` can be determined in the current context" by
 
       ⇉ X
 
-Finally, we'll have derivitation trees like
+Finally, we'll have derivation trees like
 
       X        Y
       →→→→→→→→→→
@@ -912,7 +912,38 @@ the `n` will still be inferrable:
 
 This is because `1 + n` reduces to `suc n`, so the two definitions are equivalent.
 
-Note that Agda looks under lambdas when reducing an expression, so for example `λ n -> 1 + n` and `λ n -> suc n` are two definitionally equal terms:
+Note however that a "morally" equivalent definition:
+
+      headᵥ⁺-wrong : ∀ {A n} -> Vec A (n + 1) -> A
+      headᵥ⁺-wrong (x ∷ᵥ _) = x
+
+does not type check giving:
+
+      I'm not sure if there should be a case for the constructor _∷ᵥ_,
+      because I get stuck when trying to solve the following unification
+      problems (inferred index ≟ expected index):
+        suc n ≟ n₁ + 1
+      when checking that the pattern x ∷ᵥ _ has type Vec A (n + 1)
+
+That's because `_+_` is defined by pattern matching on its left operand, so `1 + n` computes while `n + 1` is stuck and does not compute as `n` is a variable rather than an expression starting with a constructor of `ℕ`. `headᵥ⁺-wrong` `is a contrived example, but this problem can arise in real cases, for example consider a naive attempt to define the `reverse` function over `Vec` using an accumulator, the helper type checks perfectly:
+
+```agda
+  reverse-go : ∀ {A n m} -> Vec A m -> Vec A n -> Vec A (n + m)
+  reverse-go acc  []ᵥ      = acc
+  reverse-go acc (x ∷ᵥ xs) = x ∷ᵥ reverse-go acc xs
+```
+
+but the final definition gives an error:
+
+      -- _n_390 + 0 != n of type ℕ
+      reverse-wrong : ∀ {A n} -> Vec A n -> Vec A n
+      reverse-wrong xs = reverse-go []ᵥ xs
+
+That's because `reverse-go` is appled to `[]ᵥ` of type `Vec A 0` and `xs` of type `Vec A n`, so it returns a `Vec A (n + 0)`, which is not definitionally the same thing as `Vec A n`. We could prove that `n + 0` equals `n` for any `n` and use that proof to rewrite `Vec A (n + 0)` into `Vec A n`, but that would make it harder to prove properties about `reverse` defined this way.
+
+The usual way of approaching this problem is by generalizing the helper. In the case of `reverse` we can generalize the helper to the regular `foldl` function and define `reverse` in terms of that -- that's what [they do](https://github.com/agda/agda-stdlib/blob/7c8c17b407c14c5828b8755abb7584a4878286da/src/Data/Vec/Base.agda#L270-L271) in the standard library. Also see [this Stack Overflow question and answer](https://stackoverflow.com/questions/33345899/how-to-enumerate-the-elements-of-a-list-by-fins-in-linear-time) for a more complex example. Anyway, end of digression.
+
+Agda looks under lambdas when reducing an expression, so for example `λ n -> 1 + n` and `λ n -> suc n` are two definitionally equal terms:
 
 ```agda
   _ : (λ n -> 1 + n) ≡ (λ n -> suc n)
@@ -2116,7 +2147,7 @@ Here's an inference-friendly data structure:
 Here's a quick test that `Sets` does have better inference properties than `Vec`:
 
 ```agda
-  -- `n` can be inferred from `Sets n` as well.
+  -- `n` can be inferred from `Sets n`, hence can be left it implicit.
   -- As before, this function is constructor/argument-headed.
   ToFun : ∀ {n} -> Sets n -> Set -> Set
   ToFun {0}      tt₁     B = B
@@ -2133,9 +2164,7 @@ Type checks perfectly.
 Now we can proceed to defining `Sets`-based polyvariadic `zipWith`. For that we'll neeed a way to map elements of a `Sets` with a function:
 
 ```agda
-  -- Since `Sets` is constructor-headed, `n` can be inferred from the explicit `Sets n` argument
-  -- and thus can be left implicit.
-  -- This function is constructor-headed.
+  -- This function is constructor-headed as its `Vec`-based analogue.
   mapSets : ∀ {n} -> (Set -> Set) -> Sets n -> Sets n
   mapSets {0}     F  tt₁     = tt₁
   mapSets {suc n} F (A , As) = F A , mapSets F As
@@ -2162,7 +2191,7 @@ And the rest is the same as the previous version except `List` is replaced by `S
   zipWithN _ f = apN (Vec.replicate f)
 ```
 
-We can check that all previous tests still pass. No need to specify `n` when when all arguments and the result are explicitly provided (which makes it possible for Agda to invert `ToVecFun` and infer `As`, as before)
+Note that `n` is an explicit argument in `zipWithN`. Providing `n` explicitly is useful when `As` can't be inferred otherwise. We'll consider such cases, but first let's check that all previous tests still pass. No need to specify `n` when when all arguments and the result are explicitly provided (which makes it possible for Agda to invert `ToVecFun` and infer `As`, as before)
 
 ```agda
   _ : zipWithN _ 1 ≡ (1 ∷ᵥ 1 ∷ᵥ 1 ∷ᵥ []ᵥ)
@@ -2185,7 +2214,7 @@ No need to specify `n` when either `B` or the spine of `As` is specified (which 
   _ = refl
 ```
 
-But now we can also just specify the arity (`n`) of the zipping function without specifying `B` or the spine of `As` as the spine of `As` can be inferred from `n` due to `Sets` being defined by pattern matching on `n` and computing to an `n`-ary product (which is inference-friendly due to the eta-rule of `_×_`):
+I.e. the `Sets`-based `zipWithN` is at least as good inference-wise as its `List`-based counterpart. But now we can also just specify the arity (`n`) of the zipping function without specifying `B` or the spine of `As` as the spine of `As` can be inferred from `n` due to `Sets` being defined by pattern matching on `n` and computing to an `n`-ary product (which is inference-friendly due to the eta-rule of `_×_`):
 
 ```agda
   _ : zipWithN 1 suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
@@ -2198,18 +2227,7 @@ But now we can also just specify the arity (`n`) of the zipping function without
   _ = refl
 ```
 
-This approach generalizes to dependenty-typed functions as well as full universe polymorpism, see this [Stack Overflow question and answer](https://stackoverflow.com/q/29179508/3237465) for an elaborated example. And it's possible to write a general machinery that supports both non-dependent and dependent n-ary functions, see this [blog post](http://effectfully.blogspot.com/2016/04/generic-universe-polymorphic.html).
-
-
-```agda
-  _ : zipWithN _ suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
-  _ = refl
-```
-
-
-TODO: reference my n-ary comp
-
-
+This approach generalizes to dependenty-typed functions as well as full universe polymorpism, see [this Stack Overflow question and answer](https://stackoverflow.com/q/29179508/3237465) for an elaborated example. And it's possible to write a general machinery that supports both non-dependent and dependent n-ary functions, see this [blog post](http://effectfully.blogspot.com/2016/04/generic-universe-polymorphic.html).
 
 ## Universe levels
 
@@ -2220,40 +2238,40 @@ module UniverseLevels where
 There are a bunch of definitional equalities associated with universe levels. Without them universe polymorphism would be nearly unusable. Here are the equalities:
 
 ```agda
-_ : ∀ {α} -> lzero ⊔ α ≡ α
-_ = refl
+  _ : ∀ {α} -> lzero ⊔ α ≡ α
+  _ = refl
 
-_ : ∀ {α} -> α ⊔ α ≡ α
-_ = refl
+  _ : ∀ {α} -> α ⊔ α ≡ α
+  _ = refl
 
-_ : ∀ {α} -> lsuc α ⊔ α ≡ lsuc α
-_ = refl
+  _ : ∀ {α} -> lsuc α ⊔ α ≡ lsuc α
+  _ = refl
 
-_ : ∀ {α β} -> α ⊔ β ≡ β ⊔ α
-_ = refl
+  _ : ∀ {α β} -> α ⊔ β ≡ β ⊔ α
+  _ = refl
 
-_ : ∀ {α β γ} -> (α ⊔ β) ⊔ γ ≡ α ⊔ (β ⊔ γ)
-_ = refl
+  _ : ∀ {α β γ} -> (α ⊔ β) ⊔ γ ≡ α ⊔ (β ⊔ γ)
+  _ = refl
 
-_ : ∀ {α β} -> lsuc α ⊔ lsuc β ≡ lsuc (α ⊔ β)
-_ = refl
+  _ : ∀ {α β} -> lsuc α ⊔ lsuc β ≡ lsuc (α ⊔ β)
+  _ = refl
 ```
 
 A demonstration of how Agda can greatly simplify level expressions using the above identites:
 
 ```agda
-_ : ∀ {α β γ} -> lsuc α ⊔ (γ ⊔ lsuc (lsuc β)) ⊔ lzero ⊔ (β ⊔ γ) ≡ lsuc (α ⊔ lsuc β) ⊔ γ
-_ = refl
+  _ : ∀ {α β γ} -> lsuc α ⊔ (γ ⊔ lsuc (lsuc β)) ⊔ lzero ⊔ (β ⊔ γ) ≡ lsuc (α ⊔ lsuc β) ⊔ γ
+  _ = refl
 ```
 
-These special rules also give us an ability to define a less-than-or-equal-to relation on levels:
+These special rules also give us the ability to define a less-than-or-equal-to relation on levels:
 
 ```agda
-_≤ℓ_ : Level -> Level -> Set
-α ≤ℓ β = α ⊔ β ≡ β
+  _≤ℓ_ : Level -> Level -> Set
+  α ≤ℓ β = α ⊔ β ≡ β
 ```
 
-which in turn allows to [emulate cumulativity of universes](http://effectfully.blogspot.com/2016/07/cumu.html) in Agda (although there is an experimental option [`--cumulativity`](https://agda.readthedocs.io/en/latest/language/cumulativity.html) that makes the universe hierarchy cumulative).
+which in turn allows us to [emulate cumulativity of universes](http://effectfully.blogspot.com/2016/07/cumu.html) in Agda (although there is an experimental option [`--cumulativity`](https://agda.readthedocs.io/en/latest/language/cumulativity.html) that makes the universe hierarchy cumulative).
 
 The list of equalities shown above is not exhaustive. E.g. if during type checking Agda comes up with the following constraint:
 
@@ -2263,8 +2281,11 @@ it gets solved as `α ≡ β`.
 
 
 
+```agda
+  _% = _∘_
 
-
+  _ = suc % ∘ _+_
+```
 
 
 
