@@ -120,7 +120,7 @@ Partially or fully applied `id₁` doesn't need a type signature either:
   _ = id₁ true
 ```
 
-You can even interleave implicit and expicit arguments and partial applications (and so full ones as well) will still be inferrable:
+You can even interleave implicit and explicit arguments and partial applications (and so full ones as well) will still be inferrable:
 
 ```agda
   const = λ {A : Set} (x : A) {B : Set} (y : B) -> x
@@ -287,6 +287,8 @@ To fix this we can explicitly specify a `B` (any of type `Set` will work, let's 
 
 In general, Agda expects all implicits (and metavariables in general) to be resolved and won't gloss over such details the way Haskell does. Agda is a proof assistant and under the [Curry-Howard correspondence](https://en.wikipedia.org/wiki/Curry%E2%80%93Howard_correspondence) each argument to a function represents a certain logical assumption and every such assumption must be fulfilled at the call site either explicitly or in an automated manner.
 
+
+
 TODO: a crash course on universe polymorphism?
 
 ## Not dependent enough
@@ -347,12 +349,82 @@ But note also that `K₀`, in its turn, can be expressed in terms of `K₁`:
 
 ```agda
   K₀′ : {A : Set} {B : Set} -> A -> B -> A
-  K₀′ x y = K₁ x y
+  K₀′ = K₁
 ```
 
-Basically, `K₁` expects a `A -> Set` and we can concoct one from `B : Set` via `λ _ -> B`.
+Basically, `K₁` expects a `A -> Set` and we can create one from `B : Set` via `λ _ -> B`.
 
-So `K₀` and `K₁` are equally powerful.
+So `K₀` and `K₁` are equally powerful. And note how in both the `K₀`-via-`K₁` and `K₁`-via-`K₀` cases Agda successfully infers implicits.
+
+So is `K₀`/`K₁` the best we can do? Nope, here's a twist: we can make the type of the result depend on the second argument (the one that gets dropped), which in turn requires to reflect the dependency in the type of the first argument (the one that gets returned), so we end up with
+
+```agda
+  -- ᵈ for "dependent".
+  Kᵈ : {A : Set} {B : A -> Set} -> (∀ {x} -> B x) -> ∀ x -> B x
+  Kᵈ y x = y
+```
+
+Compare this to regular function application:
+
+```agda
+  _$_ : {A : Set} {B : A -> Set} -> (∀ x -> B x) -> ∀ x -> B x
+  f $ x = f x
+```
+
+I.e. `Kᵈ` is implicit function application.
+
+"You're making it up! `Kᵈ` elaborates to `λ y x -> y {x}`, how is that a `K` combinator?"
+
+Here is how: first of all, `K₀` can be directly defined via `Kᵈ`:
+
+```agda
+  K₀′′ : {A : Set} {B : Set} -> A -> B -> A
+  K₀′′ x y = Kᵈ x y
+```
+
+But most importantly `Kᵈ` expresses the "drop the second argument, return the first one" idea better than than the non-dependent `K` as the former can be used where the latter fails. For example, in the [Outrageous but Meaningful Coincidences](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.379.3169&rep=rep1&type=pdf) paper the author stumbles upon a few expressions involving `K` that look like they should type check, but they don't, despite the fact that a bunch of very similar expressions also involving `K` type check perfectly well. So the author inlines the definition of `K` and writes in a footnote:
+
+> It’s frankly astonishing how effective Agda’s implicit syntax mechanism turns out to be. The trouble is that the system’s limits are far from clear. It is hard to tell what shouldn’t work, and what is rather a lacuna.
+
+However in this case the problem is not Agda not being able to infer something, but rather the type of `K` being too restrictive. If we use the dependent version of `K` instead, then [everything type checks](https://github.com/effectfully/random-stuff/blob/07253f395c63813abb64a08045e22ae8412e5be6/Kipling.agda#L110-L114).
+
+TODO:
+
+  K₁′ {A} {B} x y = K₀ {A} {B x} x y
+
+
+Cannot instantiate the metavariable _195 to solution B x
+since it contains the variable x
+which is not in scope of the metavariable
+    K₁ = K₀
+
+  -- TODO: talk about `id _ _ id` before that.
+  K₁ {_} {_} = K₀ {_} {_}
+
+
+One of the ill-typed
+
+
+There is no way to make the type of the constant depend on an environment it discards!
+
+-- Cannot instantiate the metavariable _737 to solution ⟦ A ρ ⟧ᵘ
+-- since it contains the variable ρ
+-- which is not in scope of the metavariable
+ᵏ proj₁ ˢ ⟦ p ⟧
+
+ᵏ′ proj₁ ˢ ⟦ p ⟧
+
+
+
+```agda
+  K₃ : ∀ {α β} {A : Set α} {B : A -> Set β} -> (∀ {x} -> B x) -> ∀ x -> B x
+  K₃ y x = y
+
+  K₄ : ∀ {α} {A : Set α} {β : A -> Level} {B : ∀ x -> Set (β x)} -> (∀ {x} -> B x) -> ∀ x -> B x
+  K₄ y x = y
+
+  _ = K₄ (λ {α} -> Set α)
+```
 
 TODO: Talk about _$′_
 
@@ -365,26 +437,6 @@ TODO: Talk about _$′_
 -- inferring the non-dependency. Primed (′ = \prime) versions of the
 -- operations are therefore provided below that sometimes have better
 -- inference properties.
-
-
-
-```agda
-  K₂ : {A : Set} {B : A -> Set} -> (∀ {x} -> B x) -> ∀ x -> B x
-  K₂ y x = y
-
-  K₀′′ : {A : Set} {B : Set} -> A -> B -> A
-  K₀′′ {A} {B} x y = K₂ {B} {λ _ -> A} x y
-```
-
-```agda
-  K₃ : ∀ {α β} {A : Set α} {B : A -> Set β} -> (∀ {x} -> B x) -> ∀ x -> B x
-  K₃ y x = y
-
-  K₄ : ∀ {α} {A : Set α} {β : A -> Level} {B : ∀ x -> Set (β x)} -> (∀ {x} -> B x) -> ∀ x -> B x
-  K₄ y x = y
-
-  _ = K₄ (λ {α} -> Set α)
-```
 
 -- ```agda
 --   K₂ : ∀ {A : Set} {B : A -> Set} -> (∀ {x} -> B x) -> ∀ x -> B x
@@ -422,17 +474,13 @@ TODO: Talk about _$′_
 
 
 
--- -- TODO: speaking of K
-
--- -- ```agda
--- --   _ = replicate
--- -- ```
-
 -- -- ## InferenceAndPatternMatching
 
 -- -- ```agda
 -- -- module InferenceAndMatching where
 -- -- ```
+
+-- -- TODO: mention that in Haskell it's completely fine and move this (and perhaps the next) section before the one talking about combinators.
 
 -- -- Unrestricted pattern matching generally breaks type inference. Take for instance
 
