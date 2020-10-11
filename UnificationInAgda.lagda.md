@@ -81,7 +81,7 @@ You can make Agda infer the same type that Haskell infers by explicitly binding 
   _ = λ {A} -> [] {A}
 ```
 
-(`_ = <...>` is an anonymous definition: we ask Agda to type check something, but don't care about giving it a name, because not going to use it later)
+(`_ = <...>` is an anonymous definition: we ask Agda to type check something, but don't bother giving it a name, because we're not going to use it later)
 
 This definition is accepted, which means that Agda inferred its type successfully.
 
@@ -103,7 +103,7 @@ Type inference works not only with lambdas binding implicit arguments, but also 
   id₁ = λ {A : Set} (x : A) -> x
 ```
 
-is the regular `id` function, which is spelled as
+is the regular `id` function spelled as
 
 ```haskell
   id :: forall a. a -> a
@@ -267,7 +267,7 @@ can be equally written as
       name : _
       name = term
 
-since Agda elaborates `_` to a fresh metavariable and then type checks `term` against it, which amounts to unifying the inferred type of `term` with the meta. If the inferred type doesn't contain metas itself, then the meta standing for `_` is resolved as that type and the definition is accepted. So type inference is just a particular form of unification.
+since Agda elaborates `_` to a fresh metavariable and then type checks `term` against it, which amounts to unifying the inferred type of `term` with the meta. If the inferred type doesn't contain metas itself, then the meta standing for `_` is resolved as that type and the definition is accepted (if the inferred type does contain metas, things get more difficult and we're not going to describe all the gory details here). So type inference is just a particular form of unification.
 
 You can put `_` basically anywhere and let Agda infer what term/type it stands for. For example:
 
@@ -482,14 +482,14 @@ to tell Agda not to worry about potential dependencies.
 module ImplicitArgumens where
 ```
 
-As we've seen implicit arguments and metavariables are closely related. Agda's internal theory has metas in it, so inference of implicit arguments amounts to turning an implicit into a metavariable and resolving it later. The complicated part however is that it's not always obvious where implicits are inserted.
+As we've seen implicit arguments and metavariables are closely related. Agda's internal theory has metas in it, so inference of implicit arguments amounts to turning an implicit into a metavariable and resolving it later. The complicated part however is that it's not completely obvious where implicits get inserted.
 
 For example, it may come as a surprise, but
 
       _ : ∀ {A : Set} -> A -> A
       _ = λ {A : Set} x -> x
 
-gives a type error. This is because Agda greedily binds implicits, so the `A` at the term level gets automatically bound on the lhs (left-hand side, i.e. before `=`), which gives you
+gives a type error. This is because Agda greedily binds implicits, so the `A` at the term level gets automatically bound on the lhs (left-hand side, i.e. before `=`), which gives you essentially this:
 
       _ : ∀ {A : Set} -> A -> A
       _ {_} = <your_code_goes_here>
@@ -501,20 +501,39 @@ where `{_}` stands for `{A}`. So you can't bind `A` by a lambda, because it's al
   id {A} = λ (x : A) -> x
 ```
 
-TODO: whenever you write `f {_}`
-TODO: talk about automatic insertions at the call site
-TODO: talk about `id _ _ id`
+Not only does Agda eagerly binds implicits, but it also inserts them eagerly at the call site. E.g.
 
-There is a notorious bug that has been in Agda for ages (even since its creation probably?) called The Hidden Lambda Bug:
+```agda
+  id-id : {A : Set} -> A -> A
+  id-id = id id
+```
+
+elaborates to
+
+```agda
+  id-id₁ : {A : Set} -> A -> A
+  id-id₁ {A} = id {A -> A} (id {A})
+```
+
+I.e. the inner `id` gets implicitly instantiated and only then fed to the outer `id`. Hence the outer `id` is instantiated at `A -> A`, which is the type of the inner instantiated `id`.
+
+An alternative could be
+
+      id-id₂ : {A : Set} -> A -> A
+      id-id₂ {A} = id { {A : Set} -> A -> A } id {A}
+
+Here the inner `id` doesn't get instantiated and gets fed to the outer `id` as is. Hence the outer `id` is instantiated at `{A : Set} -> A -> A`, which is the type of the inner uninstantiated `id`.
+
+(Except that definition does not type check, because `{A : Set} -> A -> A` is of type `Set₁` rather than `Set` and we don't bother fixing this with proper universe polymorphism as those details are irrelevant for explaining how implicits get inserted)
+
+There is a notorious bug related to insertion of implicit lambdas that has been in Agda for ages (even since its creation probably?) called The Hidden Lambda Bug. I'm not going to describe the bug here as details change across different version of Agda, but here are some links:
 
 - tracked in [this issue](https://github.com/agda/agda/issues/1079)
 - discussed in detail in [this issue](https://github.com/agda/agda/issues/2099)
 - there's even an entire [MSc thesis](http://www2.tcs.ifi.lmu.de/~abel/MScThesisJohanssonLloyd.pdf) about it
 - and a [plausible solution](https://github.com/AndrasKovacs/implicit-fun-elaboration/blob/master/paper.pdf)
 
-TODO: describe the bug a bit
-
-So while the turn-implicits-into-metas approach works well, it has its edge cases. In practice, it's not a big deal to insert an implicit lambda to circumvent the bug, but it's not always clear that Agda throws a type error because of this bug and not due to something else (e.g. I was completely lost in [this case](https://github.com/agda/agda/issues/1095)). So beware.
+So while Agda's elaborations works well, it has its edge cases. In practice, it's not a big deal to insert an implicit lambda to circumvent the bug, but it's not always clear that Agda throws a type error because of this bug and not due to something else (e.g. I was completely lost in [this case](https://github.com/agda/agda/issues/1095)). So beware.
 
 ## An underspecified argument example
 
@@ -661,7 +680,7 @@ and ask for the type of the expression in the hole, we'll see
       Goal: A -> B -> A
       Have: ({B} -> A) -> B -> A
 
-and `A` and `{B} -> A` fail to unify. While a bound variable of type `A` can be used where a `{B} -> A` is expected as Agda will realize that an implicit variable of type `B` can be simply ignored, and so this is why eta-expaning the definition solves the problem.
+and `A` and `{B} -> A` are two distinct types that fail to unify. While a bound variable of type `A` can be used where a `{B} -> A` is expected as Agda will realize that an implicit variable of type `B` can be simply ignored, and so this is why eta-expaning the definition solves the problem.
 
 Is `Kᵈ` the best we can do? Well, Agda has explicit universe polymorphism, so we can and should make the definition universe-polymorphic:
 
@@ -2502,3 +2521,5 @@ import Control.Monad.ST
 --     • In the second argument of ‘(.)’, namely ‘runST’
 test = not . runST $ pure True
 test = not $ runST $ pure True
+
+## talk about `id _ _ id` ?
