@@ -33,7 +33,7 @@ We'll look into basics of type inference in Agda and then move to more advanced 
 
 ```agda
 open import Level renaming (suc to lsuc; zero to lzero)
-open import Function using (_∘_; _∘′_; _∋_; case_of_) renaming (_|>_ to _&_; _|>′_ to _&′_)
+open import Function using (_$_; _$′_; _∘_; _∘′_; _∋_; case_of_) renaming (_|>_ to _&_; _|>′_ to _&′_)
 open import Relation.Binary.PropositionalEquality
 open import Data.Empty using (⊥)
 open import Data.Unit.Base using (⊤; tt)
@@ -649,8 +649,8 @@ So is `K₀`/`K₁` the best we can do? Nope, here's a twist: we can make the ty
 Compare this to regular function application:
 
 ```agda
-  _$_ : {A : Set} {B : A -> Set} -> (∀ x -> B x) -> ∀ x -> B x
-  f $ x = f x
+  apply : {A : Set} {B : A -> Set} -> (∀ x -> B x) -> ∀ x -> B x
+  apply f x = f x
 ```
 
 I.e. `Kᵈ` is implicit function application.
@@ -712,7 +712,33 @@ Now the example type checks:
 
 But that is rarely needed in practice and not making `β` a function is good enough most of the time.
 
-TODO: moral of the story. TODO: talk about the metavariable error a bit.
+In general, an attempt to apply a higher-order function expecting a non-dependent function as its argument to a dependent function results in an error talking about a variable not being in scope of a metavariable. As a quick example, having a random dependently typed function:
+
+```agda
+  BoolOrℕ : Bool -> Set
+  BoolOrℕ true  = Bool
+  BoolOrℕ false = ℕ
+
+  falseOrZero : (b : Bool) -> BoolOrℕ b
+  falseOrZero true  = false
+  falseOrZero false = 0
+```
+
+we can trigger an error by trying to feed it to `_$′_` expecting a non-dependent function:
+
+      -- Cannot instantiate the metavariable _401 to solution BoolOrℕ b
+      -- since it contains the variable b
+      -- which is not in scope of the metavariable
+      _ = falseOrZero $′ true
+
+The exact error message depends on the version of Agda used, though.
+
+But note that
+
+1. this error can be triggered in different cases as well as we saw with `K₁ = K₀`
+2. applying a higher-order function to an unexpectedly dependent function can give a different error as we saw with `Kᵈ′′ (λ {α} -> Set α)`
+
+Anyway, in my experience being able to make sense of that particular error is really helpful.
 
 ## Inferring implicits
 
@@ -2259,10 +2285,8 @@ which makes Agda accept the definition.
 
 ### Generating type-level data
 
--- TODO: make two modules
-
 ```agda
-module PolyvariadicZipWithEta where
+module PolyvariadicZipWithNoGo where
   open import Data.Vec.Base as Vec renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
 ```
 
@@ -2345,6 +2369,11 @@ Summarizing, `Vec` is as inference-friendly as `List` (i.e. not very friendly) w
 But there's a better way to store types.
 
 #### Polyvariadic `zipWith`: eta-based
+
+```agda
+module PolyvariadicZipWithEtaBased where
+  open import Data.Vec.Base as Vec renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
+```
 
 Here's an inference-friendly data structure:
 
