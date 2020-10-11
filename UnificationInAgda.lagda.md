@@ -33,11 +33,11 @@ We'll look into basics of type inference in Agda and then move to more advanced 
 
 ```agda
 open import Level renaming (suc to lsuc; zero to lzero)
-open import Function using (_∘_; _∋_; case_of_) renaming (_|>_ to _&_)
+open import Function using (_∘_; _∘′_; _∋_; case_of_) renaming (_|>_ to _&_; _|>′_ to _&′_)
 open import Relation.Binary.PropositionalEquality
 open import Data.Empty using (⊥)
 open import Data.Unit.Base using (⊤; tt)
-open import Data.Bool.Base using (Bool; true; false) renaming (_∨_ to _||_; _∧_ to _&&_)
+open import Data.Bool.Base using (Bool; true; false; not) renaming (_∨_ to _||_; _∧_ to _&&_)
 open import Data.Nat.Base  using (ℕ; zero; suc; _+_; _*_; _∸_)
 open import Data.Product using (_×_; Σ; _,_; _,′_)
 ```
@@ -240,13 +240,289 @@ is not going to be inferred regardless of how this definition is used later. How
 
 In general, definitions in a `let`/`where`/`mutual` block share the same context, which makes it possible to infer more things than with consecutive standalone definitions. It's occasionally useful to create a bogus `mutual` block when you want the type of a definition to be inferred based on its use.
 
+## Unification intro
+
+```agda
+module UnificationIntro where
+```
+
+The following definitions type check:
+
+```agda
+  _ = (λ x -> x) 1
+  _ = (λ x -> 2) 1
+```
+
+reassuring that Agda's type checker is not based on some simple bidirectional typing rules (if you're not familier with those, see [Bidirectional Typing Rules: A Tutorial](http://www.davidchristiansen.dk/tutorials/bidirectional.pdf)), but the type checker does have a bidirectional interface ([`inferExpr`](https://hackage.haskell.org/package/Agda-2.6.1/docs/Agda-TheTypeChecker.html#v:inferExpr) & [`checkExpr`](https://hackage.haskell.org/package/Agda-2.6.1/docs/Agda-TheTypeChecker.html#v:checkExpr)) where type inference is defined in terms of type checking for the most part:
+
+      -- | Infer the type of an expression. Implemented by checking against a meta variable. <...>
+      inferExpr :: A.Expr -> TCM (Term, Type)
+
+which means that any definition of the following form:
+
+      name = term
+
+can be equally written as
+
+      name : _
+      name = term
+
+since Agda elaborates `_` to a fresh metavariable and then type checks `term` against it, which amounts to unifying the inferred type of `term` with the meta. If the inferred type doesn't contain metas itself, then the meta standing for `_` is resolved as that type and the definition is accepted. So type inference is just a particular form of unification.
+
+You can put `_` basically anywhere and let Agda infer what term/type it stands for. For example:
+
+```agda
+  id₂ : {A : Set} -> A -> _
+  id₂ x = x
+```
+
+Here Agda binds the `x` variable and records that it has type `A` and when the `x` variable is returned as a result, Agda unifies the expected type `_` with the actual type of `x`, which is `A`. Thus the definition above elaborates to
+
+```agda
+  id₂′ : {A : Set} -> A -> A
+  id₂′ x = x
+```
+
+This definition:
+
+```agda
+  id₃ : {A : Set} -> _ -> A
+  id₃ x = x
+```
+
+elaborates to the same result in a similar fashion, except now Agda first records that the type of `x` is a meta and when `x` is returned as a result, Agda unifies that meta with the expected type, i.e. `A`, and so the meta gets resolved as `A`.
+
+An `id` function that receives an explicit type:
+
+```agda
+  id₄ : (A : Set) -> _ -> A
+  id₄ A x = x
+```
+
+can be called as
+
+```agda
+  _ = id₄ _ true
+```
+
+and the `_` will be inferred as `Bool`.
+
+It's also possible to explicitly specify an implicit type by `_`, which is essentially a no-op:
+
+```agda
+  id₅ : {A : Set} -> A -> A
+  id₅ x = x
+
+  _ = id₅ {_} true
+```
+
+## Inference and pattern matching
+
+```agda
+module InferenceAndPatternMatching where
+```
+
+Unrestricted pattern matching breaks type inference. Take for instance
+
+```agda
+  _ = λ where
+          zero    -> true
+          (suc _) -> false
+```
+
+which is a direct counterpart of Haskell's
+
+      isZero = \case
+          0 -> True
+          _ -> False
+
+The latter is accepted by Haskell, but the former is not accepted by Agda: Agda colors the entire snippet in yellow meaning it's unable to resolve the generated metavariables. "What's the problem? The inferred type should be just `ℕ -> Bool`" -- you might think. Such a type works indeed:
+
+```agda
+  _ : ℕ -> Bool
+  _ = λ where
+          zero    -> true
+          (suc _) -> false
+```
+
+But here's another thing that works:
+
+```agda
+  _ : (n : ℕ) -> n & λ where
+                         zero -> Bool
+                         _    -> Bool
+  _ = λ where
+          zero    -> true
+          (suc _) -> false
+```
+
+Recall that we're in a dependently typed language and here the type of the result of a function can depend on the argument of that function. And both the
+
+      ℕ -> Bool
+
+      (n : ℕ) -> n & λ where
+                         zero -> Bool
+                         _    -> Bool
+
+types are correct for that function. Even though they are "morally" the same, they are not definitionally equal and there's a huge difference between them: the former one doesn't have a dependency and the latter one has.
+
+There is a way to tell Agda that pattern matching is non-dependent: use `case_of_`, e.g.
+
+```agda
+  _ = λ (n : ℕ) -> case n of λ where
+          zero    -> true
+          (suc _) -> false
+```
+
+type checks. `case_of_` is just a definition in the standard library that at the term level is essentially
+
+      case x of f = f x
+
+and at the type level it restricts the type of `f` to be a non-dependent function.
+
+Analogously, this is yellow:
+
+```agda
+  _ = λ (n : ℕ) -> n & λ where
+          zero    -> true
+          (suc _) -> false
+```
+
+due to `_&_` being dependent:
+
+      _&_ : {A : Set} {B : A -> Set} -> ∀ x -> (∀ x -> B x) -> B x
+      x & f = f x
+
+While this is fine:
+
+```agda
+  _ = λ (n : ℕ) -> n &′ λ where
+          zero    -> true
+          (suc _) -> false
+```
+
+due to `_&′_` being non-dependent:
+
+      _&′_ : {A B : Set} -> A -> (A -> B) -> B
+      x &′ f = f x
+
+Agda's stdlib provides several intentionally non-dependent functions (e.g. `_∘′_`, `_$′_` and `case_of_` that we've already seen) to enable the user to get improved inference in the non-dependent case.
+
+Note that annotating `n` with its type, `ℕ`, is mandatory in all the cases above. Agda is not able to conclude that if a value is matched against a pattern, then the value must have the same type as the pattern.
+
+Even this doesn't type check:
+
+```agda
+  _ = λ n -> case n of λ where
+          zero    -> zero
+          (suc n) -> n
+```
+
+even though Agda really could figure out that if `zero` is returned from one of the branches, then the type of the result is `ℕ`, and since `n` is returned from the other branch and pattern matching is non-dependent, `n` must have the same type. See [#2834](https://github.com/agda/agda/issues/2834) for why Agda doesn't attempt to be clever here.
+
+There's a funny syntactical way to tell Agda that a function is non-dependent: just do not bind a variable at the type level. This type checks:
+
+```agda
+  _ : ℕ -> _
+  _ = λ where
+          zero    -> true
+          (suc _) -> false
+```
+
+while this doesn't:
+
+```agda
+  _ : (n : ℕ) -> _
+  _ = λ where
+          zero    -> true
+          (suc _) -> false
+```
+
+In the latter case Agda treats `_` as being potentially dependent on `n`, since `n` is explicitly bound. And in the former case there can't be any dependency on a non-existing variable.
+
+## InferenceAndConstructors
+
+```agda
+module InferenceAndConstructors where
+```
+
+Since tuples are dependent, this
+
+```agda
+  _ = (1 , 2)
+```
+
+results in unresolved metas as all of these
+
+      ℕ × ℕ
+
+      Σ ℕ λ where
+              zero -> ℕ
+              _    -> ℕ
+
+      Σ ℕ λ where
+              1 -> ℕ
+              _ -> Bool
+
+are valid types for this expression, which is similar to what we've considered in the previous section, except here not all of the types are "morally the same": the last one is very different to the first two.
+
+As in the case of functions you can use a non-dependent alternative
+
+```agda
+  _ = (1 ,′ 2)
+```
+
+(`_,′_` is a non-dependent version of `_,_`)
+
+to tell Agda not to worry about potential dependencies.
+
+## Implicit arguments
+
+```agda
+module ImplicitArgumens where
+```
+
+As we've seen implicit arguments and metavariables are closely related. Agda's internal theory has metas in it, so inference of implicit arguments amounts to turning an implicit into a metavariable and resolving it later. The complicated part however is that it's not always obvious where implicits are inserted.
+
+For example, it may come as a surprise, but
+
+      _ : ∀ {A : Set} -> A -> A
+      _ = λ {A : Set} x -> x
+
+gives a type error. This is because Agda greedily binds implicits, so the `A` at the term level gets automatically bound on the lhs (left-hand side, i.e. before `=`), which gives you
+
+      _ : ∀ {A : Set} -> A -> A
+      _ {_} = <your_code_goes_here>
+
+where `{_}` stands for `{A}`. So you can't bind `A` by a lambda, because it's already silently bound for you. Although it's impossible to reference that type variable unless you explicitly name it as in
+
+```agda
+  id : {A : Set} -> A -> A
+  id {A} = λ (x : A) -> x
+```
+
+TODO: whenever you write `f {_}`
+TODO: talk about automatics insertions at the call site
+TODO: talk about `id _ _ id`
+
+There is a notorious bug that has been in Agda for ages (even since its creation probably?) called The Hidden Lambda Bug:
+
+- tracked in [this issue](https://github.com/agda/agda/issues/1079)
+- discussed in detail in [this issue](https://github.com/agda/agda/issues/2099)
+- there's even an entire [MSc thesis](http://www2.tcs.ifi.lmu.de/~abel/MScThesisJohanssonLloyd.pdf) about it
+- and a [plausible solution](https://github.com/AndrasKovacs/implicit-fun-elaboration/blob/master/paper.pdf)
+
+TODO: describe the bug a bit
+
+So while the turn-implicits-into-metas approach works well, it has its edge cases. In practice, it's not a big deal to insert an implicit lambda to circumvent the bug, but it's not always clear that Agda throws a type error because of this bug and not due to something else (e.g. I was completely lost in [this case](https://github.com/agda/agda/issues/1095)). So beware.
+
 ## An underspecified argument example
 
 ```agda
 module UnderspecifiedArgument where
 ```
 
-Another difference between Haskell and Agda is that Agda doesn't allow to leave ambiguous types. Consider a classic example: the `I` combinator can be defined in terms of the `S` and `K` combinators. In Haskell we can express that as
+Another difference between Haskell and Agda is that Agda is not happy about ambiguous types that don't really affect anything. Consider a classic example: the `I` combinator can be defined in terms of the `S` and `K` combinators. In Haskell we can express that as
 
 ```haskell
 k :: a -> b -> a
@@ -272,52 +548,29 @@ and [it'll type check](https://ideone.com/mZQM1f). However the Agda's equivalent
   I = S K K
 ```
 
-results in the last `K` being highlighted in yellow (which means that not all metavariables were resolved). To see why, let's reduce `S K K` a bit:
+results in the last `K` being highlighted in yellow (which means that not all metavariables were resolved). To see why, let's inline `S` and see if the problem persists:
 
-      λ x -> K x (K x)
+```agda
+  _ : ∀ {A} -> A -> A
+  _ = λ x -> K x (K x)
+```
 
-this computes to `λ x -> x` as expected, but the problem is that in the expression above the `K x` argument is underspecified: a `K` must receive a particular `B`, but we neither explicitly specify a `B`, nor can it be inferred from the context as the entire `K x` argument is thrown away by the outer `K`.
+It does. So the problem is that in the expression above the final `K x` argument is underspecified: a `K` must receive a particular `B`, but we neither explicitly specify a `B`, nor can it be inferred from the context as the entire `K x` argument is thrown away by the outer `K`.
 
 To fix this we can explicitly specify a `B` (any of type `Set` will work, let's pick `ℕ`):
 
 ```agda
-  I′ : ∀ {A} -> A -> A
-  I′ = S K (K {B = ℕ})
+  _ : ∀ {A} -> A -> A
+  _ = S K (K {B = ℕ})
 ```
 
 In general, Agda expects all implicits (and metavariables in general) to be resolved and won't gloss over such details the way Haskell does. Agda is a proof assistant and under the [Curry-Howard correspondence](https://en.wikipedia.org/wiki/Curry%E2%80%93Howard_correspondence) each argument to a function represents a certain logical assumption and every such assumption must be fulfilled at the call site either explicitly or in an automated manner.
-
-
-
-TODO: a crash course on universe polymorphism?
 
 ## Not dependent enough
 
 ```agda
 module NotDependentEnough where
 ```
-
-TODO: talk about Setω?
-
-      id = λ α (A : Set α) (x : A) -> x
-
-      -- Setω != (Set _α_199)
-      -- when checking that the expression id has type
-      -- (α : Level) (A : Set α) (x : A) → A
-      _ = id _ _ id
-
-TODO: talk about eta-contracted K₁.
-
-import Control.Monad.ST
-
---     • Couldn't match type ‘f0 Bool’ with ‘forall s. ST s Bool’
---       Expected type: f0 Bool -> Bool
---         Actual type: (forall s. ST s Bool) -> Bool
---     • In the second argument of ‘(.)’, namely ‘runST’
-test = not . runST $ pure True
-test = not $ runST $ pure True
-
-
 
 Speaking of `K`, what do you think its most general type is, in Agda? Recall that we were using this definition in the previous section:
 
@@ -345,11 +598,11 @@ Basically, if you have an `x` to pass to `K₀`, then you can use that same `x` 
   K₁′ {A} {B} x y = K₀ {A} {B x} x y
 ```
 
-But note also that `K₀`, in its turn, can be expressed in terms of `K₁`:
+But note also that `K₀`, in turn, can be expressed in terms of `K₁`:
 
 ```agda
-  K₀′ : {A : Set} {B : Set} -> A -> B -> A
-  K₀′ = K₁
+  K₀-via-K₁ : {A : Set} {B : Set} -> A -> B -> A
+  K₀-via-K₁ = K₁
 ```
 
 Basically, `K₁` expects a `A -> Set` and we can create one from `B : Set` via `λ _ -> B`.
@@ -378,8 +631,8 @@ I.e. `Kᵈ` is implicit function application.
 Here is how: first of all, `K₀` can be directly defined via `Kᵈ`:
 
 ```agda
-  K₀′′ : {A : Set} {B : Set} -> A -> B -> A
-  K₀′′ x y = Kᵈ x y
+  K₀-via-Kᵈ : {A : Set} {B : Set} -> A -> B -> A
+  K₀-via-Kᵈ x y = Kᵈ x y
 ```
 
 But most importantly `Kᵈ` expresses the "drop the second argument, return the first one" idea better than than the non-dependent `K` as the former can be used where the latter fails. For example, in the [Outrageous but Meaningful Coincidences](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.379.3169&rep=rep1&type=pdf) paper the author stumbles upon a few expressions involving `K` that look like they should type check, but they don't, despite the fact that a bunch of very similar expressions also involving `K` type check perfectly well. So the author inlines the definition of `K` and writes in a footnote:
@@ -388,10 +641,8 @@ But most importantly `Kᵈ` expresses the "drop the second argument, return the 
 
 However in this case the problem is not Agda not being able to infer something, but rather the type of `K` being too restrictive. If we use the dependent version of `K` instead, then [everything type checks](https://github.com/effectfully/random-stuff/blob/07253f395c63813abb64a08045e22ae8412e5be6/Kipling.agda#L110-L114).
 
-TODO:
 
-  K₁′ {A} {B} x y = K₀ {A} {B x} x y
-
+TODO: talk about eta-contracted K₁.:
 
 Cannot instantiate the metavariable _195 to solution B x
 since it contains the variable x
@@ -401,18 +652,14 @@ which is not in scope of the metavariable
   -- TODO: talk about `id _ _ id` before that.
   K₁ {_} {_} = K₀ {_} {_}
 
+import Control.Monad.ST
 
-One of the ill-typed
-
-
-There is no way to make the type of the constant depend on an environment it discards!
-
--- Cannot instantiate the metavariable _737 to solution ⟦ A ρ ⟧ᵘ
--- since it contains the variable ρ
--- which is not in scope of the metavariable
-ᵏ proj₁ ˢ ⟦ p ⟧
-
-ᵏ′ proj₁ ˢ ⟦ p ⟧
+--     • Couldn't match type ‘f0 Bool’ with ‘forall s. ST s Bool’
+--       Expected type: f0 Bool -> Bool
+--         Actual type: (forall s. ST s Bool) -> Bool
+--     • In the second argument of ‘(.)’, namely ‘runST’
+test = not . runST $ pure True
+test = not $ runST $ pure True
 
 
 
@@ -423,2103 +670,1814 @@ There is no way to make the type of the constant depend on an environment it dis
   K₄ : ∀ {α} {A : Set α} {β : A -> Level} {B : ∀ x -> Set (β x)} -> (∀ {x} -> B x) -> ∀ x -> B x
   K₄ y x = y
 
+  -- Set (lsuc (lsuc α)) != Set _β_382
+  -- when checking that the expression Set α has type Set (lsuc α)
+  -- _ = K₃ (λ {α} -> Set α)
+
   _ = K₄ (λ {α} -> Set α)
 ```
 
-TODO: Talk about _$′_
+TODO: finish
 
-```agda
-  _ = Function._$′_
-```
-
--- Any of the above operations for dependent functions will also work
--- for non-dependent functions but sometimes Agda has difficulty
--- inferring the non-dependency. Primed (′ = \prime) versions of the
--- operations are therefore provided below that sometimes have better
--- inference properties.
+-- ## Inferring implicits
 
 -- ```agda
---   K₂ : ∀ {A : Set} {B : A -> Set} -> (∀ {x} -> B x) -> ∀ x -> B x
---   K₂ y x = y
+-- module InferringImplicits where
 -- ```
+
+-- As we've seen previously the following code type checks fine:
 
 -- ```agda
---   K₀ : {A B : Set} -> A -> B -> A
+--   id : {A : Set} -> A -> A
+--   id x = x
+
+--   _ = id true
 -- ```
+
+-- Here `A` is bound implicitly in `id`, but Agda is able to infer that in this case `A` should be instantiated to `Bool` and so Agda elaborates the expression to `id {Bool} true`.
+
+-- This is something that Haskell would infer as well. The programmer would hate to explicitly write out the type of every single argument, so programming languages often allow not to specify types when they can be inferred from the context. Agda is quite unique here however, because it can infer a lot more than other languages (even similar dependently typed ones) due to bespoke machineries handling various common patterns. But let's start with basics.
+
+-- ## Arguments of data types
 
 -- ```agda
---   K₁ : {A : Set} {B : A -> Set} -> ∀ x -> B x -> A
---   K₁ x y = x
-
---   K₀ = K₁
-
--- --   K₃ : ∀ {A : Set} {B : A -> Set} {C : (∀ {x} -> B x) -> Set} -> (y : ∀ {x} -> B x) -> C y -> B x
-
---   K₃ : ∀ {A : Set} {B : A -> Set} {x} {C : B x -> Set} -> (∀ {y : B x} -> C y) -> (y : B x) -> C y
---   K₃ z y = z
-
--- --   K₄ : {A B : Set} {C : B -> Set} {D : ∀ {y} -> C y -> Set} -> (z : ∀ {y} -> C y) -> (y : D z) -> {!!}
--- --   K₄ x y = x
-
---   K₄ : {A : Set} {B : A -> Set} -> (y : ∀ {x} -> B x) -> {!!} -> {!!}
---   K₄ x y = {!!}
-
-
-
--- --   _ = λ {A : Set} -> K₂ {A} {!!} {!!}
+-- module ArgumentsOfDataTypes where
+--   open BasicsOfTypeInference
 -- ```
 
--- plus universe polymorphism
+-- Agda can infer parameters/indices of a data type from a value of that data type. For example if you have a function
 
+-- ```agda
+--   listId : ∀ {A} -> List A -> List A
+--   listId xs = xs
+-- ```
 
+-- then the implicit `A` can be inferred from a list:
 
+-- ```agda
+--   _ = listId (1 ∷ 2 ∷ [])
+-- ```
 
--- -- ## InferenceAndPatternMatching
+-- Unless, of course, `A` can't be determined from the list alone. E.g. if we pass an empty list to `f`, Agda will mark `listId` with yellow and display an unresolved metavariable `_A`:
 
--- -- ```agda
--- -- module InferenceAndMatching where
--- -- ```
+-- ```agda
+--   _ = listId []
+-- ```
 
--- -- TODO: mention that in Haskell it's completely fine and move this (and perhaps the next) section before the one talking about combinators.
+-- Another example of this situation is when the list is not empty, but the type of its elements can't be inferred, e.g.
 
--- -- Unrestricted pattern matching generally breaks type inference. Take for instance
+-- ```agda
+--   _ = listId ((λ x -> x) ∷ [])
+-- ```
 
--- -- ```agda
--- --   _ = λ where
--- --           zero    -> true
--- --           (suc _) -> false
--- -- ```
+-- Here the type of `x` can be essentially anything (`ℕ`, `List Bool`, `⊤ × Bool -> ℕ`, etc), so Agda asks to provide missing details. Which we can do either by supplying a value for the implicit argument explicitly
 
--- -- which is a direct counterpart of Haskell's
+-- ```agda
+--   _ = listId {ℕ -> ℕ} ((λ x -> x) ∷ [])
+-- ```
 
--- --       isZero = \case
--- --           0 -> True
--- --           _ -> False
+-- or by annotating `x` with a type
 
+-- ```agda
+--   _ = listId ((λ (x : ℕ) -> x) ∷ [])
+-- ```
 
--- -- Agda colors the entire snippet in yellow meaning it's unable to resolve the generated metavariables. "What's the problem? The inferred type should be just `ℕ -> Bool`" -- you might think. Such a type works indeed:
+-- or just by providing a type signature
 
--- -- ```agda
--- --   _ : ℕ -> Bool
--- --   _ = λ where
--- --           zero    -> true
--- --           (suc _) -> false
--- -- ```
+-- ```agda
+--   _ : List (ℕ -> ℕ)
+--   _ = listId ((λ x -> x) ∷ [])
+-- ```
 
--- -- But here's another thing that works:
+-- All these definitions are equivalent.
 
--- -- ```agda
--- --   _ : (n : ℕ) -> n & λ where
--- --                          zero -> Bool
--- --                          _    -> Bool
--- --   _ = λ where
--- --           zero    -> true
--- --           (suc _) -> false
--- -- ```
+-- So "`A` is inferrable from a `List A`" doesn't mean that you can pass any list in and magically synthesize the type of its elements -- only that if that type is already known at the call site, then you don't need to explicitly specify it to apply `listId` to the list as it'll be inferred for you. "Already known at the call site" doesn't mean that the type of elements needs to be inferrable -- sometimes it can be derived from the context, for example:
 
--- -- Recall that we're in a dependently typed language and here the type of the result of a function can depend on the argument of that function. And both the
+-- ```agda
+--   _ = suc ∷ listId ((λ x -> x) ∷ [])
+-- ```
 
--- --       ℕ -> Bool
+-- The implicit `A` gets inferred here: since all elements of a list have the same type, the type of `λ x -> x` must be the same as the type of `suc`, which is known to be `ℕ -> ℕ`, hence the type of `λ x -> x` is also `ℕ -> ℕ`.
 
--- --       (n : ℕ) -> n & λ where
--- --                          zero -> Bool
--- --                          _    -> Bool
+-- ### Comparison to Haskell
 
--- -- types are correct for that function. Even though they are "morally" the same, they are not definitionally equal and there's a huge difference between them: the former one doesn't have a dependency and the latter one has.
+-- In Haskell it's also the case that `a` is inferrable form a `[a]`: when the programmer writes
 
--- -- There is a way to tell Agda that pattern matching is non-dependent: use `case_of_`, e.g.
+--       sort :: Ord a => [a] -> [a]
 
--- -- ```agda
--- --   _ = λ (n : ℕ) -> case n of λ where
--- --           zero    -> true
--- --           (suc _) -> false
--- -- ```
+-- Haskell is always able to infer `a` from the given list (provided `a` is known at the call site: `sort []` is as meaningless in Haskell as it is in Agda) and thus figure out what the appropriate `Ord a` instance is. However, another difference between Haskell and Agda is that whenever Haskell sees that some implicit variables (i.e. those bound by `forall <list_of_vars> .`) can't be inferred in the general case, Haskell, unlike Agda, will complain. E.g. consider the following piece of code:
 
--- -- type checks. `case_of_` is just a definition in the standard library that at the term level is essentially
+--       {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, TypeFamilies #-}
 
--- --       case x of f = f x
+--       class C a b where
+--         f :: a -> Int
 
--- -- and at the type level it restricts the type of `f` to be a non-dependent function.
+--       instance b ~ () => C Bool b where
+--         f _ = 0
 
--- -- Annotating `n` with its type, `ℕ`, is mandatory in this case. It seems Agda is not able to conclude that if a value is matched against a pattern, then the value must have the same type as the pattern.
+--       main = print $ f True
 
--- -- Even this doesn't type check:
+-- Even though at the call site (`f True`) `b` is determined via the `b ~ ()` constraint of the `C Bool b` instance and so there is no ambiguity, Haskell still complains about the definition of the `C` class itself:
 
--- -- ```agda
--- --   _ = λ n -> case n of λ where
--- --           zero    -> zero
--- --           (suc n) -> n
--- -- ```
+--       • Could not deduce (C a b0)
+--         from the context: C a b
+--           bound by the type signature for:
+--                      f :: forall a b. C a b => a -> Int
+--           at prog.hs:6:3-15
+--         The type variable ‘b0’ is ambiguous
 
--- -- even though Agda really could figure out that if `zero` is returned from one of the branches, then the type of the result is `ℕ`, and since `n` is returned from the other branch and pattern matching is non-dependent, `n` must have the same type. See [#2834](https://github.com/agda/agda/issues/2834) for why Agda doesn't attempt to be clever here.
+-- The type of the `f` function mentions the `b` variable in the `C a b` constraint, but that variable is not mentioned anywhere else and hence can't be inferred in the general case, so Haskell complains, because by default it wants all type variables to be inferrable upfront regardless of whether at the call site it would be possible to infer a variable in some cases or not. We can override the default behavior by enabling the `AllowAmbiguousTypes` extension, which makes the code type check without any additional changes.
 
--- -- There's a funny syntactical way to tell Agda that a function is non-dependent: just do not bind a variable at the type level. This type checks:
+-- Agda's unification capabilities are well above Haskell's ones, so Agda doesn't attempt to predict what can and can't be inferred and allows us to make anything implicit, deferring resolution problems to the call site (i.e. it's like having `AllowAmbiguousTypes` globally enabled in Haskell). In fact, you can make implicit even such things that are pretty much guaranteed to never have any chance of being inferred, for example
 
--- -- ```agda
--- --   _ : ℕ -> _
--- --   _ = λ where
--- --           zero    -> true
--- --           (suc _) -> false
--- -- ```
+-- ```agda
+--   const-zeroᵢ : {ℕ} -> ℕ  -- `{ℕ}` is a shorthand for `{_ : ℕ}`
+--   const-zeroᵢ = zero
+-- ```
 
--- -- while this doesn't:
+-- as even
 
--- -- ```agda
--- --   _ : (n : ℕ) -> _
--- --   _ = λ where
--- --           zero    -> true
--- --           (suc _) -> false
--- -- ```
+-- ```agda
+--   const-zeroᵢ′ : {ℕ} -> ℕ
+--   const-zeroᵢ′ = const-zeroᵢ
+-- ```
 
--- -- In the latter case Agda treats `_` as being porentially dependent on `n`, since `n` is explicitly bound. And in the former case there can't be any dependency on a non-existing variable.
+-- results in unresolved metas, because it elaborates to
 
--- -- ## InferenceAndConstructors
+-- ```agda
+--   const-zeroᵢ′-elaborated : {ℕ} -> ℕ
+--   const-zeroᵢ′-elaborated {_} = const-zeroᵢ {_}
+-- ```
 
--- -- ```agda
--- -- module InferenceAndConstructors where
--- -- ```
+-- (due to eager insertion of implicits) and the fact that there's a variable of type `ℕ` bound in the current scope (regardless of whether it's bound explicitly or implicitly) does not have any effect on how implicits get resolved in the body of the definition as metavariable resolution does not come up with instantiations for metavariables at random by looking at the local or global scope, it only determines what instantiations are bound to be by solving unification problems that arise during type checking.
 
--- -- Since tuples are dependent, this
+-- But note that even though a value of type `{ℕ} -> ℕ` is not very useful on its own, having such a value as an argument like this:
 
--- -- ```agda
--- --   _ = (1 , 2)
--- -- ```
+-- ```agda
+--   at1 : ({ℕ} -> ℕ) -> ℕ
+--   at1 f = f {1}
+-- ```
 
--- -- results in unresolved metas as all of these
+-- can be useful occasionally, because it gives you an API where the caller can decide if they want to bind the additional implicit variable or not. Here's an example for each of the cases:
 
--- --       ℕ × ℕ
+-- ```agda
+--   _ = at1 2
+--   _ = at1 λ {n} -> n
+-- ```
 
--- --       Σ ℕ λ where
--- --               zero -> ℕ
--- --               _    -> ℕ
+-- Thus, [covariantly positioned](https://en.wikipedia.org/wiki/Covariance_and_contravariance_(computer_science)#Function_types) implicits that are not determined by explicit arguments can be handy for providing defaults or additional data that the caller is usually not interested in, but occasionally is, and so the data is hidden in an implicit.
 
--- --       Σ ℕ λ where
--- --               1 -> ℕ
--- --               _ -> Bool
+-- By the way, if you do need to resolve things based on the current scope, then Agda has [instance arguments](https://agda.readthedocs.io/en/latest/language/instance-arguments.html) for that (they are similar to Haskell's type classes, but do not obey [global uniqueness of instances](http://blog.ezyang.com/2014/07/type-classes-confluence-coherence-global-uniqueness), because [it's hard](https://github.com/AndrasKovacs/pny1-assignment/blob/292e0fc28d7c27b35240d4f9d014bdf4db3afc62/DepTC.md#4-coherent-classes-in-dependent-languages)), for example
 
--- -- are valid types for this expression, which is similar to what we've considered in the previous section, except here not all of the types are "morally the same": the last one is very different to the first two.
+-- ```agda
+--   const-zeroᵢᵢ : {{ℕ}} -> ℕ
+--   const-zeroᵢᵢ = zero
 
--- -- As in the case of functions you can use a non-dependent alternative
+--   const-zeroᵢᵢ′ : {{ℕ}} -> ℕ
+--   -- Explicitly inserting `{{_}}` just to show that there's no interference with how instance
+--   -- arguments get inserted.
+--   const-zeroᵢᵢ′ {{_}} = const-zeroᵢᵢ
+-- ```
 
--- -- ```agda
--- --   _ = (1 ,′ 2)
--- -- ```
+-- does not result in unresolved metas.
 
--- -- (`_,′_` is a non-dependent version of `_,_`)
+-- ## Under the hood
 
--- -- to tell Agda not to worry about potential dependencies.
+-- ```agda
+-- module UnderTheHood where
+--   open BasicsOfTypeInference
+-- ```
 
--- -- ## Unification intro
+-- ### Example 1: `listId (1 ∷ 2 ∷ [])`
 
--- -- ```agda
--- -- module UnificationIntro where
--- -- ```
+-- Returning to our `listId` example, when the user writes
 
--- -- The following definitions type check:
+-- ```agda
+--   listId : ∀ {A} -> List A -> List A
+--   listId xs = xs
 
--- -- ```agda
--- --   _ = (λ x -> x) 1
--- --   _ = (λ x -> 2) 1
--- -- ```
+--   _ = listId (1 ∷ 2 ∷ [])
+-- ```
 
--- -- reassuring that Agda's type checker is not based on some simple bidirectional typing rules (if you're not familier with those, see [Bidirectional Typing Rules: A Tutorial](http://www.davidchristiansen.dk/tutorials/bidirectional.pdf)), but the type checker does have a bidirectional interface ([`inferExpr`](https://hackage.haskell.org/package/Agda-2.6.1/docs/Agda-TheTypeChecker.html#v:inferExpr) & [`checkExpr`](https://hackage.haskell.org/package/Agda-2.6.1/docs/Agda-TheTypeChecker.html#v:checkExpr)) where type inference is defined in terms of type checking for the most part:
+-- here is what happens under the hood:
 
--- --       -- | Infer the type of an expression. Implemented by checking against a meta variable. <...>
--- --       inferExpr :: A.Expr -> TCM (Term, Type)
+-- 1. the implicit `A` gets instantiated as a metavariable `_A`
+-- 2. the type of the instantiated `listId` becomes `List _A -> List _A`
+-- 3. `List _A` (what the instantiated `listId` expects as an argument) gets unified with `List ℕ` (the type of the actual argument). We'll write this as `List _A =?= List ℕ`
+-- 4. From unification's point of view type constructors are injective, hence `List _A =?= List ℕ` simplifies to `_A =?= ℕ`, which immediately gets solved as `_A := ℕ`
 
--- -- which means that any definition of the following form:
+-- And this is how Agda figures out that `A` gets instantiated by `ℕ`.
 
--- --       name = term
+-- ### Example 2: `suc ∷ listId ((λ x -> x) ∷ [])`
 
--- -- can be equally written as
+-- Similarly, when the user writes
 
--- --       name : _
--- --       name = term
+-- ```agda
+--   _ = suc ∷ listId ((λ x -> x) ∷ [])
+-- ```
 
--- -- since Agda elaborates `_` to a fresh metavariable and then type checks `term` againt it, which amounts to unifying the inferred type of `term` with the meta. If the inferred type doesn't contain metas itself, then the meta standing for `_` is resolved as that type and the definition is accepted. So type inference is just a particular form of unification.
+-- 1. the implicit `A` gets instantiated as a metavariable `_A`
+-- 2. the type of the instantiated `listId` becomes `List _A -> List _A`
+-- 3. `List _A` (what the instantiated `listId` expects as an argument) gets unified with `List (_B -> _B)` (the type of the actual argument). `_B` is another metavariable. Recall that we don't know the type of `x` and hence we simply make it a meta
+-- 4. `List _A` (this time the type of the result that `listId` returns) also gets unified with the expected type, which is `ℕ -> ℕ`, because `suc` prepended to the result of the `listId` application is of this type
+-- 5. we get the following [unification problem](https://en.wikipedia.org/wiki/Unification_(computer_science)#Unification_problem,_solution_set) consisting of two equations:
 
--- -- You can put `_` basically anywhere and let Agda infer what term/type it stands for. For example:
+--          List _A =?= List (_B -> _B)
+--          List _A =?= List (ℕ -> ℕ)
 
--- -- ```agda
--- --   id₂ : {A : Set} -> A -> _
--- --   id₂ x = x
--- -- ```
+-- 6. as before we can simplify the equations by stripping `List`s from both the sides of each of them:
 
--- -- Here Agda binds the `x` variable and records that it has type `A` and when the `x` variable is returned as a result, Agda unifies the expected type `_` with the actual type of `x`, which is `A`. Thus the definition above elaborates to
+--          _A =?= _B -> _B
+--          _A =?= ℕ -> ℕ
 
--- -- ```agda
--- --   id₂′ : {A : Set} -> A -> A
--- --   id₂′ x = x
--- -- ```
+-- 7. the second equation gives us `A := ℕ -> ℕ` and it only remains to solve
 
--- -- This definition:
+--          ℕ -> ℕ =?= _B -> _B
 
--- -- ```agda
--- --   id₃ : {A : Set} -> _ -> A
--- --   id₃ x = x
--- -- ```
+-- 8. which is easy: `_B := ℕ`. The full solution of the unification problem is
 
--- -- elaborates to the same result in a similar fashion, except now Agda first records that the type of `x` is a meta and when `x` is returned as a result, Agda unifies that meta with the expected type, i.e. `A`, and so the meta gets resolved as `A`.
+--          _B := ℕ
+--          _A := ℕ -> ℕ
 
--- -- An `id` function that receives an explicit type:
+-- ### Example 3: `λ xs -> suc ∷ listId xs`
 
--- -- ```agda
--- --   id₄ : (A : Set) -> _ -> A
--- --   id₄ A x = x
--- -- ```
+-- When the user writes
 
--- -- can be called as
+-- ```agda
+--   _ = λ xs -> suc ∷ listId xs
+-- ```
 
--- -- ```agda
--- --   _ = id₄ _ true
--- -- ```
+-- 1. the yet-unknown type of `xs` elaborates to a metavariable, say, `_LA`
+-- 2. the implicit `A` of `listId` elaborates to a metavariable `_A`
+-- 3. `List _A` (what the instantiated `listId` expects as an argument) gets unified with `_LA` (the type of the actual argument)
+-- 4. `List _A` (this time the type of the result that `listId` returns) also gets unified with the expected type, which is `ℕ -> ℕ`, because `suc` prepended to the result of the `listId` application is of this type
+-- 5. we get the following unification problem consisting of two equations:
 
--- -- and the `_` will be inferred as `Bool`.
+--          List _A =?= _LA
+--          List _A =?= List (ℕ -> ℕ)
 
--- -- It's also possible to explicitly specify an implicit type by `_`, which is essentially a no-op:
+-- 6. `_A` gets solved as `_A := ℕ -> ℕ`
+-- 7. and `_LA` gets solved as `_LA := List (ℕ -> ℕ)`
+-- 8. so the final solution is
 
--- -- ```agda
--- --   id₅ : {A : Set} -> A -> A
--- --   id₅ x = x
+--          _A := ℕ -> ℕ
+--          _LA := List (ℕ -> ℕ)
 
--- --   _ = id₅ {_} true
--- -- ```
+-- But note that we could first resolve `_LA` as `List _A`, then resolve `_A` and then instantiate it in `List _A` (what `_LA` was resolved to), which would give us the same final solution.
 
--- -- ## Implicit arguments
+-- In general, there are many possible routes that one can take when solving a unification problem, but some of them are less straightforward (and thus less efficient) than others. Such details are beyond the scope of this document, here we are only interested in unification problems that get generated during type checking and solutions to them. Arriving at those solutions is a pretty technical (and incredibly convoluted) thing.
 
--- -- ```agda
--- -- module ImplicitArgumens where
--- -- ```
+-- ## Nicer notation
 
--- -- As we've just seen implicit arguments and metavariable are closely related. Agda's internal theory has metas in it, so inference of implicit arguments amounts to turning an implicit into a metavariable and resolving it later. The complicated part however is that it's not always obvious where to bound an implicit.
+-- In the previous section we were stripping `List` from both the sides of an equation. We were able to do this, because from the unification's point of view type constructors are injective (this has nothing to do with the [`--injective-type-constructors`](https://github.com/agda/agda/blob/10d704839742c332dc85f1298b80068ce4db6693/test/Succeed/InjectiveTypeConstructors.agda) pragma that [makes Agda anti-classical](https://lists.chalmers.se/pipermail/agda/2010/001526.html)). I.e. `List A` uniquely determines `A`.
 
--- -- For example, it may come as a surprise, but
+-- We'll denote "`X` uniquely determines `Y`" (the notation comes from the [bidirectional typechecking](https://ncatlab.org/nlab/show/bidirectional+typechecking) discipline) as `X ⇉ Y`. So `List A ⇉ A`.
 
--- --       _ : ∀ {A : Set} -> A -> A
--- --       _ = λ {A : Set} x -> x
+-- An explicitly provided argument (i.e. `x` in either `f x` or `f {x}`) uniquely determines the type of that argument. We'll denote that as `(x : A) ⇉ A`.
 
--- -- gives a type error. This is because Agda greedily binds implicits, so the `A` at the term level gets automatically bound on the lhs (left-hand side, i.e. before `=`), which gives you
+-- We'll denote "`X` does not uniquely determine `Y`" as `X !⇉ Y`.
 
--- --       _ : ∀ {A : Set} -> A -> A
--- --       _ {_} = <your_code_goes_here>
+-- We'll also abbreviate
 
--- -- where `{_}` stands for `{A}`. So you can't bind `A` by a lambda, because it's already silently bound for you. Although it's impossible to reference that type variable unless you explicitly name it as in
+--       X ⇉ Y₁
+--       X ⇉ Y₂
+--       ...
+--       X ⇉ yₙ
 
--- -- ```agda
--- --   id : {A : Set} -> A -> A
--- --   id {A} = λ (x : A) -> x
--- -- ```
+-- as
 
--- -- TODO: talk about `id _ _ id`
+--       X ⇉ Y₁ , Y₂ ... Yₙ
 
--- -- There is a notorious bug that has been in Agda for ages (even since its creation probably?) called The Hidden Lambda Bug:
+-- (and similarly for `!⇉`).
 
--- -- - tracked in [this issue](https://github.com/agda/agda/issues/1079)
--- -- - discussed in detail in [this issue](https://github.com/agda/agda/issues/2099)
--- -- - there's even an entire [MSc thesis](http://www2.tcs.ifi.lmu.de/~abel/MScThesisJohanssonLloyd.pdf) about it
--- -- - and a [plausible solution](https://github.com/AndrasKovacs/implicit-fun-elaboration/blob/master/paper.pdf)
+-- We'll denote "`X` can be determined in the current context" by
 
--- -- So while the turn-implicits-into-metas approach works well, it has its edge cases. In practice, it's not a big deal to insert an implicit lambda to circumvent the bug, but it's not always clear that Agda throws a type error because of this bug and not due to something else (e.g. I was completely lost in [this case](https://github.com/agda/agda/issues/1095)). So beware.
+--       ⇉ X
 
--- -- ## Inferring implicits
+-- Finally, we'll have derivation trees like
 
--- -- ```agda
--- -- module InferringImplicits where
--- -- ```
+--       X        Y
+--       →→→→→→→→→→
+--         Z₁ , Z₂        A
+--         →→→→→→→→→→→→→→→→
+--                B
 
--- -- As we've seen previously the following code type checks fine:
+-- which reads as "if `X` and `Y` are determined in the current context, then it's possible to determine `Z₁` and `Z₂`, having which together with `A` determined in the current context, is enough to determine `B`".
 
--- -- ```agda
--- --   id : {A : Set} -> A -> A
--- --   id x = x
+-- ## Type functions
 
--- --   _ = id true
--- -- ```
+-- ```agda
+-- module TypeFunctions where
+--   open BasicsOfTypeInference
+-- ```
 
--- -- Here `A` is bound implicitly in `id`, but Agda is able to infer that in this case `A` should be instantiated to `Bool` and so Agda elaborates the expression to `id {Bool} true`.
+-- Analogously to `listId` we can define `fId` that works for any `F : Set -> Set`, including `List`:
 
--- -- This is something that Haskell would infer as well. The programmer would hate to explicitly write out the type of every single argument, so programming languages often allow not to specify types when they can be inferred from the context. Agda is quite unique here however, because it can infer a lot more than other languages (even similar dependently typed ones) due to bespoke machineries handling various common patterns. But let's start with basics.
+-- ```agda
+--   fId : ∀ {F : Set -> Set} {A} -> F A -> F A
+--   fId a = a
+-- ```
 
--- -- ## Arguments of data types
+-- Unfortunately applying `fId` to a list without explicitly instantiating `F` as `List`
 
--- -- ```agda
--- -- module ArgumentsOfDataTypes where
--- --   open BasicsOfTypeInference
--- -- ```
+-- ```agda
+--   _ = fId (1 ∷ 2 ∷ [])
+-- ```
 
--- -- Agda can infer parameters/indices of a data type from a value of that data type. For example if you have a function
+-- results in both `F` and `A` not being resolved. This might be surprising, but there is a good reason for this behavior: there are multiple ways `F` and `A` can be instantiated, so Agda doesn't attempt to pick a random one. Here's the solution that the user would probably have had in their mind:
 
--- -- ```agda
--- --   listId : ∀ {A} -> List A -> List A
--- --   listId xs = xs
--- -- ```
+--       _F := List
+--       _A := ℕ
 
--- -- then the implicit `A` can be inferred from a list:
+-- but this one is also valid:
 
--- -- ```agda
--- --   _ = listId (1 ∷ 2 ∷ [])
--- -- ```
+--       _F := λ _ -> List ℕ
+--       _A := Bool
 
--- -- Unless, of course, `A` can't be determined from the list alone. E.g. if we pass an empty list to `f`, Agda will mark `listId` with yellow and display an unresolved metavariable `_A`:
+-- i.e. `F` ignores `A` and just returns `List ℕ`:
 
--- -- ```agda
--- --   _ = listId []
--- -- ```
+-- ```agda
+--   _ = fId {λ _ -> List ℕ} {Bool} (1 ∷ 2 ∷ [])
+-- ```
 
--- -- Another example of this situation is when the list is not empty, but the type of its elements can't be inferred, e.g.
+-- Even if you specify `A = ℕ`, `F` still can be either `List` or `λ _ -> List ℕ`, so you have to specify `F` (and then the problem reduces to the one that we considered earlier, hence there is no need to also specify `A`):
 
--- -- ```agda
--- --   _ = listId ((λ x -> x) ∷ [])
--- -- ```
+-- ```agda
+--   _ = fId {List} (1 ∷ 2 ∷ [])
+-- ```
 
--- -- Here the type of `x` can be essentially anything (`ℕ`, `List Bool`, `⊤ × Bool -> ℕ`, etc), so Agda asks to provide missing details. Which we can do either by supplying a value for the implicit argument explicitly
+-- Therefore, `F A` (where `F` is a type variable) uniquely determines neither `F` nor `A`, i.e. `F A !⇉ F , A`.
 
--- -- ```agda
--- --   _ = listId {ℕ -> ℕ} ((λ x -> x) ∷ [])
--- -- ```
+-- ### Comparison to Haskell
 
--- -- or by annotating `x` with a type
+-- A type application of a variable is injective in Haskell. I.e. unification of `f a` and `g b` (where `f` and `g` are type variables) forces unification of `a` and `b`, as well as unification of `f` and `g`. I.e. not only does `f a ⇉ a` hold for arbitrary type variable `f`, but also `f a ⇉ f`. This makes it possible to define functions like
 
--- -- ```agda
--- --   _ = listId ((λ (x : ℕ) -> x) ∷ [])
--- -- ```
+--       fmap :: Functor f => (a -> b) -> f a -> f b
 
--- -- or just by providing a type signature
+-- and use them without compulsively specifying `f` at the call site each time.
 
--- -- ```agda
--- --   _ : List (ℕ -> ℕ)
--- --   _ = listId ((λ x -> x) ∷ [])
--- -- ```
+-- Haskell is able to infer `f`, because no analogue of Agda's `λ _ -> List ℕ` is possible in Haskell as its surface language doesn't have type lambdas. You can't pass a type family as `f` either. Therefore there exists only one solution for "unify `f a` with `List Int`" in Haskell and it's the expected one:
 
--- -- All these definitions are equivalent.
+--       f := List
+--       a := Int
 
--- -- So "`A` is inferrable from a `List A`" doesn't mean that you can pass any list in and magically synthesize the type of its elements -- only that if that type is already known at the call site, then you don't need to explicitly specify it to apply `listId` to the list as it'll be inferred for you. "Already known at the call site" doesn't mean that the type of elements needs to be inferrable -- sometimes it can be derived from the context, for example:
+-- For a type family `F` we have `F a !⇉ a` (just like in Agda), unless `F` is an [injective type family](https://gitlab.haskell.org/ghc/ghc/wikis/injective-type-families).
 
--- -- ```agda
--- --   _ = suc ∷ listId ((λ x -> x) ∷ [])
--- -- ```
+-- ## Data constructors
 
--- -- The implicit `A` gets inferred here: since all elements of a list have the same type, the type of `λ x -> x` must be the same as the type of `suc`, which is known to be `ℕ -> ℕ`, hence the type of `λ x -> x` is also `ℕ -> ℕ`.
+-- ```agda
+-- module DataConstructors where
+-- ```
 
--- -- ### Comparison to Haskell
+-- Data constructors are injective from the unification point of view and from the theoretical point of view as well (unlike type constructors). E.g. consider the type of vectors (a vector is a list whose length is statically known):
 
--- -- In Haskell it's also the case that `a` is inferrable form a `[a]`: when the programmer writes
+-- ```agda
+--   infixr 5 _∷ᵥ_
+--   data Vec (A : Set) : ℕ -> Set where
+--     []ᵥ  : Vec A 0
+--     _∷ᵥ_ : ∀ {n} -> A -> Vec A n -> Vec A (suc n)
+-- ```
 
--- --       sort :: Ord a => [a] -> [a]
+-- The `head` function is defined like that over `Vec`:
 
--- -- Haskell is always able to infer `a` from the given list (provided `a` is known at the call site: `sort []` is as meaningless in Haskell as it is in Agda) and thus figure out what the appropriate `Ord a` instance is. However, another difference between Haskell and Agda is that whenever Haskell sees that some implicit variables (i.e. those bound by `forall <list_of_vars> .`) can't be inferred in the general case, Haskell, unlike Agda, will complain. E.g. consider the following piece of code:
+-- ```agda
+--   headᵥ : ∀ {A n} -> Vec A (suc n) -> A
+--   headᵥ (x ∷ᵥ _) = x
+-- ```
 
--- --       {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, TypeFamilies #-}
+-- I.e. we require an input vector to have at least one element and return that first element.
 
--- --       class C a b where
--- --         f :: a -> Int
+-- `n` can be left implicit, because `suc n ⇉ n`. In general, for a constructor `C` the following holds:
 
--- --       instance b ~ () => C Bool b where
--- --         f _ = 0
+--       C x₁ x₂ ... xₙ ⇉ x₁ , x₂ ... xₙ
 
--- --       main = print $ f True
+-- A simple test:
 
--- -- Even though at the call site (`f True`) `b` is determined via the `b ~ ()` constraint of the `C Bool b` instance and so there is no ambiguity, Haskell still complains about the definition of the `C` class itself:
+-- ```agda
+--   _ = headᵥ (0 ∷ᵥ []ᵥ)
+-- ```
 
--- --       • Could not deduce (C a b0)
--- --         from the context: C a b
--- --           bound by the type signature for:
--- --                      f :: forall a b. C a b => a -> Int
--- --           at prog.hs:6:3-15
--- --         The type variable ‘b0’ is ambiguous
+-- Here we pass a one-element vector to `headᵥ` and Agda succesfully infers the implicit `n` of `headᵥ` to be `0` (i.e. no elements in the vector apart from the first one).
 
--- -- The type of the `f` function mentions the `b` variable in the `C a b` constraint, but that variable is not mentioned anywhere else and hence can't be inferred in the general case, so Haskell complains, because by default it wants all type variables to be inferrable upfront regardless of whether at the call site it would be possible to infer a variable in some cases or not. We can override the default behavior by enabling the `AllowAmbiguousTypes` extension, which makes the code type check without any additional changes.
+-- During unification the implicit `n` gets instantiated to a metavariable, say, `_n` and `suc _n` (the expected length of the vector) gets unified with `suc zero` (i.e. 1, the actual length of the vector), which amounts to unifying `_n` with `zero`, which immediately results in `n := zero`.
 
--- -- Agda's unification capabilities are well above Haskell's ones, so Agda doesn't attempt to predict what can and can't be inferred and allows us to make anything implicit, deferring resolution problems to the call site (i.e. it's like having `AllowAmbiguousTypes` globally enabled in Haskell). In fact, you can make implicit even such things that are pretty much guaranteed to never have any chance of being inferred, for example
+-- Instead of having a constant vector, we can have a vector of an unspecified length and infer that length by providing `n` to `headᵥ` explicitly, as in
 
--- -- ```agda
--- --   const-zeroᵢ : {ℕ} -> ℕ  -- `{ℕ}` is a shorthand for `{_ : ℕ}`
--- --   const-zeroᵢ = zero
--- -- ```
+-- ```agda
+--   _ = λ {n} xs -> headᵥ {ℕ} {n} xs
+-- ```
 
--- -- as even
+-- The type of that definition is `∀ {n} -> Vec ℕ (suc n) -> ℕ`.
 
--- -- ```agda
--- --   const-zeroᵢ′ : {ℕ} -> ℕ
--- --   const-zeroᵢ′ = const-zeroᵢ
--- -- ```
+-- We started by binding two variables without specifying their types, but those got inferred from how arguments are used by `headᵥ`.
 
--- -- results in unresolved metas, because it elaborates to
+-- Note that `_⇉_` is transitive, i.e. if `X ⇉ Y` and `Y ⇉ Z`, then `X ⇉ Z`. For example, since `Vec A n ⇉ n` (due to `Vec` being a type constructor) and `suc n ⇉ n` (due to `suc` being a data constructor), we have `Vec A (suc n) ⇉ n` (by transitivity of `_⇉_`).
 
--- -- ```agda
--- --   const-zeroᵢ′-elaborated : {ℕ} -> ℕ
--- --   const-zeroᵢ′-elaborated {_} = const-zeroᵢ {_}
--- -- ```
+-- ## Reduction
 
--- -- (due to eager insertion of implicits) and the fact that there's a variable of type `ℕ` bound in the current scope (regardless of whether it's bound explicitly or implicitly) does not have any effect on how implicits get resolved in the body of the definition as metavariable resolution does not come up with instantiations for metavariables at random by looking at the local or global scope, it only determines what instantiations are bound to be by solving unification problems that arise during type checking.
+-- If `X` reduces to `Y` (we'll denote that as `X ~> Y`) and `Y ⇉ Z`, then `X ⇉ Z`.
 
--- -- But note that even though a value of type `{ℕ} -> ℕ` is not very useful on its own, having such a value as an argument like this:
+-- E.g. if we define an alternative version of `headᵥ` that uses `1 +_` instead of `suc`:
 
--- -- ```agda
--- --   at1 : ({ℕ} -> ℕ) -> ℕ
--- --   at1 f = f {1}
--- -- ```
+-- ```agda
+--   headᵥ⁺ : ∀ {A n} -> Vec A (1 + n) -> A
+--   headᵥ⁺ (x ∷ᵥ _) = x
+-- ```
 
--- -- can be useful occasionally, because it gives you an API where the caller can decide if they want to bind the additional implicit variable or not. Here's an example for each of the cases:
+-- the `n` will still be inferrable:
 
--- -- ```agda
--- --   _ = at1 2
--- --   _ = at1 λ {n} -> n
--- -- ```
+-- ```agda
+--   _ = headᵥ⁺ (0 ∷ᵥ []ᵥ)
+-- ```
 
--- -- Thus, [covariantly positioned](https://en.wikipedia.org/wiki/Covariance_and_contravariance_(computer_science)#Function_types) implicits that are not determined by explicit arguments can be handy for providing defaults or additional data that the caller is usually not interested in, but occasionally is, and so the data is hidden in an implicit.
+-- This is because `1 + n` reduces to `suc n`, so the two definitions are equivalent.
 
--- -- By the way, if you do need to resolve things based on the current scope, then Agda has [instance arguments](https://agda.readthedocs.io/en/latest/language/instance-arguments.html) for that (they are similar to Haskell's type classes, but do not obey [global uniqueness of instances](http://blog.ezyang.com/2014/07/type-classes-confluence-coherence-global-uniqueness), because [it's hard](https://github.com/AndrasKovacs/pny1-assignment/blob/292e0fc28d7c27b35240d4f9d014bdf4db3afc62/DepTC.md#4-coherent-classes-in-dependent-languages)), for example
+-- Note however that a "morally" equivalent definition:
 
--- -- ```agda
--- --   const-zeroᵢᵢ : {{ℕ}} -> ℕ
--- --   const-zeroᵢᵢ = zero
+--       headᵥ⁺-wrong : ∀ {A n} -> Vec A (n + 1) -> A
+--       headᵥ⁺-wrong (x ∷ᵥ _) = x
 
--- --   const-zeroᵢᵢ′ : {{ℕ}} -> ℕ
--- --   -- Explicitly inserting `{{_}}` just to show that there's no interference with how instance
--- --   -- arguments get inserted.
--- --   const-zeroᵢᵢ′ {{_}} = const-zeroᵢᵢ
--- -- ```
+-- does not type check giving:
 
--- -- does not result in unresolved metas.
+--       I'm not sure if there should be a case for the constructor _∷ᵥ_,
+--       because I get stuck when trying to solve the following unification
+--       problems (inferred index ≟ expected index):
+--         suc n ≟ n₁ + 1
+--       when checking that the pattern x ∷ᵥ _ has type Vec A (n + 1)
 
--- -- ## Under the hood
+-- That's because `_+_` is defined by pattern matching on its left operand, so `1 + n` computes while `n + 1` is stuck and does not compute as `n` is a variable rather than an expression starting with a constructor of `ℕ`. `headᵥ⁺-wrong` `is a contrived example, but this problem can arise in real cases, for example consider a naive attempt to define the `reverse` function over `Vec` using an accumulator, the helper type checks perfectly:
 
--- -- ```agda
--- -- module UnderTheHood where
--- --   open BasicsOfTypeInference
--- -- ```
+-- ```agda
+--   reverse-go : ∀ {A n m} -> Vec A m -> Vec A n -> Vec A (n + m)
+--   reverse-go acc  []ᵥ      = acc
+--   reverse-go acc (x ∷ᵥ xs) = x ∷ᵥ reverse-go acc xs
+-- ```
 
--- -- ### Example 1: `listId (1 ∷ 2 ∷ [])`
+-- but the final definition gives an error:
 
--- -- Returning to our `listId` example, when the user writes
+--       -- _n_390 + 0 != n of type ℕ
+--       reverse-wrong : ∀ {A n} -> Vec A n -> Vec A n
+--       reverse-wrong xs = reverse-go []ᵥ xs
 
--- -- ```agda
--- --   listId : ∀ {A} -> List A -> List A
--- --   listId xs = xs
+-- That's because `reverse-go` is appled to `[]ᵥ` of type `Vec A 0` and `xs` of type `Vec A n`, so it returns a `Vec A (n + 0)`, which is not definitionally the same thing as `Vec A n`. We could prove that `n + 0` equals `n` for any `n` and use that proof to rewrite `Vec A (n + 0)` into `Vec A n`, but that would make it harder to prove properties about `reverse` defined this way.
 
--- --   _ = listId (1 ∷ 2 ∷ [])
--- -- ```
+-- The usual way of approaching this problem is by generalizing the helper. In the case of `reverse` we can generalize the helper to the regular `foldl` function and define `reverse` in terms of that -- that's what [they do](https://github.com/agda/agda-stdlib/blob/7c8c17b407c14c5828b8755abb7584a4878286da/src/Data/Vec/Base.agda#L270-L271) in the standard library. See [this Stack Overflow question and answer](https://stackoverflow.com/questions/33345899/how-to-enumerate-the-elements-of-a-list-by-fins-in-linear-time) for a more complex and elaborated example. Anyway, end of digression.
 
--- -- here is what happens under the hood:
+-- Agda looks under lambdas when reducing an expression, so for example `λ n -> 1 + n` and `λ n -> suc n` are two definitionally equal terms:
 
--- -- 1. the implicit `A` gets instantiated as a metavariable `_A`
--- -- 2. the type of the instantiated `listId` becomes `List _A -> List _A`
--- -- 3. `List _A` (what the instantiated `listId` expects as an argument) gets unified with `List ℕ` (the type of the actual argument). We'll write this as `List _A =?= List ℕ`
--- -- 4. From unification's point of view type constructors are injective, hence `List _A =?= List ℕ` simplifies to `_A =?= ℕ`, which immediately gets solved as `_A := ℕ`
+-- ```agda
+--   _ : (λ n -> 1 + n) ≡ (λ n -> suc n)
+--   _ = refl
+-- ```
 
--- -- And this is how Agda figures out that `A` gets instantiated by `ℕ`.
+-- Note also that Agda does not look under pattern matching lambdas, so for example these two functions
 
--- -- ### Example 2: `suc ∷ listId ((λ x -> x) ∷ [])`
+--       λ{ zero -> zero; (suc n) -> 1 + n }
+--       λ{ zero -> zero; (suc n) -> suc n }
 
--- -- Similarly, when the user writes
+-- are not considered definitionally equal. In fact, even
 
--- -- ```agda
--- --   _ = suc ∷ listId ((λ x -> x) ∷ [])
--- -- ```
+--       _ : _≡_ {A = ℕ -> ℕ}
+--           (λ{ zero -> zero; (suc n) -> suc n })
+--           (λ{ zero -> zero; (suc n) -> suc n })
+--       _ = refl
 
--- -- 1. the implicit `A` gets instantiated as a metavariable `_A`
--- -- 2. the type of the instantiated `listId` becomes `List _A -> List _A`
--- -- 3. `List _A` (what the instantiated `listId` expects as an argument) gets unified with `List (_B -> _B)` (the type of the actual argument). `_B` is another metavariable. Recall that we don't know the type of `x` and hence we simply make it a meta
--- -- 4. `List _A` (this time the type of the result that `listId` returns) also gets unified with the expected type, which is `ℕ -> ℕ`, because `suc` prepended to the result of the `listId` application is of this type
--- -- 5. we get the following [unification problem](https://en.wikipedia.org/wiki/Unification_(computer_science)#Unification_problem,_solution_set) consisting of two equations:
+-- is an error despite the two functions being syntactically equal. Here's the funny error:
 
--- --          List _A =?= List (_B -> _B)
--- --          List _A =?= List (ℕ -> ℕ)
+--       (λ { zero → zero ; (suc n) → suc n }) x !=
+--       (λ { zero → zero ; (suc n) → suc n }) x of type ℕ
+--       when checking that the expression refl has type
+--       (λ { zero → zero ; (suc n) → suc n }) ≡
+--       (λ { zero → zero ; (suc n) → suc n })
 
--- -- 6. as before we can simplify the equations by stripping `List`s from both the sides of each of them:
+-- ## Pattern matching
 
--- --          _A =?= _B -> _B
--- --          _A =?= ℕ -> ℕ
+-- Generally speaking, pattern matching breaks inference. We'll consider various cases, but to start with the simplest ones we need to introduce a slightly weird definition of the plus operator:
 
--- -- 7. the second equation gives us `A := ℕ -> ℕ` and it only remains to solve
+-- ```agda
+-- module WeirdPlus where
+--   open DataConstructors
 
--- --          ℕ -> ℕ =?= _B -> _B
+--   _+′_ : ℕ -> ℕ -> ℕ
+--   zero  +′ m = m
+--   suc n +′ m = n + suc m
+-- ```
 
--- -- 8. which is easy: `_B := ℕ`. The full solution of the unification problem is
+-- because the usual one
 
--- --          _B := ℕ
--- --          _A := ℕ -> ℕ
+--       _+_ : ℕ -> ℕ -> ℕ
+--       zero  + m = m
+--       suc n + m = suc (n + m)
 
--- -- ### Example 3: `λ xs -> suc ∷ listId xs`
+-- is subject to certain unification heuristics, which the weird one doesn't trigger.
 
--- -- When the user writes
+-- We'll be using the following function for demonstration purposes:
 
--- -- ```agda
--- --   _ = λ xs -> suc ∷ listId xs
--- -- ```
+-- ```agda
+--   idᵥ⁺ : ∀ {A n m} -> Vec A (n +′ m) -> Vec A (n +′ m)
+--   idᵥ⁺ xs = xs
+-- ```
 
--- -- 1. the yet-unknown type of `xs` elaborates to a metavariable, say, `_LA`
--- -- 2. the implicit `A` of `listId` elaborates to a metavariable `_A`
--- -- 3. `List _A` (what the instantiated `listId` expects as an argument) gets unified with `_LA` (the type of the actual argument)
--- -- 4. `List _A` (this time the type of the result that `listId` returns) also gets unified with the expected type, which is `ℕ -> ℕ`, because `suc` prepended to the result of the `listId` application is of this type
--- -- 5. we get the following unification problem consisting of two equations:
+-- ### A constant argument
 
--- --          List _A =?= _LA
--- --          List _A =?= List (ℕ -> ℕ)
+-- `idᵥ⁺` applied to a constant vector
 
--- -- 6. `_A` gets solved as `_A := ℕ -> ℕ`
--- -- 7. and `_LA` gets solved as `_LA := List (ℕ -> ℕ)`
--- -- 8. so the final solution is
+-- ```agda
+--   _ = idᵥ⁺ (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
+-- ```
 
--- --          _A := ℕ -> ℕ
--- --          _LA := List (ℕ -> ℕ)
+-- gives us yellow, because Agda turns the implicit `n` and `m` into metavariables `_n` and `_m` and tries to unify the expected length of a vector (`_n +′ _m`) with the actual one (`2`) and there are multiple solutions to this problem, e.g.
 
--- -- But note that we could first resolve `_LA` as `List _A`, then resolve `_A` and then instantiate it in `List _A` (what `_LA` was resolved to), which would give us the same final solution.
+-- ```agda
+--   _ = idᵥ⁺ {n = 1} {m = 1} (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
+--   _ = idᵥ⁺ {n = 2} {m = 0} (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
+-- ```
 
--- -- In general, there are many possible routes that one can take when solving a unification problem, but some of them are less straightforward (and thus less efficient) than others. Such details are beyond the scope of this document, here we are only interested in unification problems that get generated during type checking and solutions to them. Arriving at those solutions is a pretty technical (and incredibly convoluted) thing.
+-- Howewer as per the previous the section, we do not really need to specify `m`, since `_+′_` is defined by recursion on `n` and hence for it to reduce it suffices to specify only `n`:
 
--- -- ## Nicer notation
+-- ```agda
+--   _ = idᵥ⁺ {n = 1} (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
+-- ```
 
--- -- In the previous section we were stripping `List` from both the sides of an equation. We were able to do this, because from the unification's point of view type constructors are injective (this has nothing to do with the [`--injective-type-constructors`](https://github.com/agda/agda/blob/10d704839742c332dc85f1298b80068ce4db6693/test/Succeed/InjectiveTypeConstructors.agda) pragma that [makes Agda anti-classical](https://lists.chalmers.se/pipermail/agda/2010/001526.html)). I.e. `List A` uniquely determines `A`.
+-- since with `n` specified this way the `_n` metavariable gets resolved as `_n := 1` and the expected length of an argument, `_n +′ _m`, becomes `suc m`, which Agda knows how to unify with `2` (the length of the actual argument).
 
--- -- We'll denote "`X` uniquely determines `Y`" (the notation comes from the [bidirectional typechecking](https://ncatlab.org/nlab/show/bidirectional+typechecking) discipline) as `X ⇉ Y`. So `List A ⇉ A`.
+-- Specifying `m` instead of `n` won't work though:
 
--- -- An explicitly provided argument (i.e. `x` in either `f x` or `f {x}`) uniquely determines the type of that argument. We'll denote that as `(x : A) ⇉ A`.
+-- ```agda
+--   _ = idᵥ⁺ {m = 1} (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
+-- ```
 
--- -- We'll denote "`X` does not uniquely determine `Y`" as `X !⇉ Y`.
+-- Agda can't resolve `_n`. This is because `_+′_` is defined by pattern matching on its first variable, so `1 +′ m` reduces to `suc m`, but `n +′ 1` is stuck and doesn't reduce to anything when `n` is a variable/metavariable/any stuck term. So even though there's a single solution to the
 
--- -- We'll also abbreviate
+--       n +′ 1 =?= 2
 
--- --       X ⇉ Y₁
--- --       X ⇉ Y₂
--- --       ...
--- --       X ⇉ yₙ
+-- unification problem, Agda is not able to come up with it, because this would require arbitrary search in the general case and Agda's unification machinery carefully avoids any such strategies.
 
--- -- as
+-- ### A non-constant argument
 
--- --       X ⇉ Y₁ , Y₂ ... Yₙ
+-- `idᵥ⁺` applied to a non-constant vector has essentially the same inference properties.
 
--- -- (and similarly for `!⇉`).
+-- Without specializing the implicit arguments we get yellow:
 
--- -- We'll denote "`X` can be determined in the current context" by
+-- ```agda
+--   _ = λ n m (xs : Vec ℕ (n +′ m)) -> idᵥ⁺ xs
+-- ```
 
--- --       ⇉ X
+-- Specializing `m` doesn't help, still yellow:
 
--- -- Finally, we'll have derivation trees like
+-- ```agda
+--   _ = λ n m (xs : Vec ℕ (n +′ m)) -> idᵥ⁺ {m = m} xs
+-- ```
 
--- --       X        Y
--- --       →→→→→→→→→→
--- --         Z₁ , Z₂        A
--- --         →→→→→→→→→→→→→→→→
--- --                B
+-- And specializing `n` (with or without `m`) allows Agda to resolve all the metas:
 
--- -- which reads as "if `X` and `Y` are determined in the current context, then it's possible to determine `Z₁` and `Z₂`, having which together with `A` determined in the current context, is enough to determine `B`".
+-- ```agda
+--   _ = λ n m (xs : Vec ℕ (n +′ m)) -> idᵥ⁺ {n = n} xs
+--   _ = λ n m (xs : Vec ℕ (n +′ m)) -> idᵥ⁺ {n = n} {m = m} xs
+-- ```
 
--- -- ## Type functions
+-- ### Examples
 
--- -- ```agda
--- -- module TypeFunctions where
--- --   open BasicsOfTypeInference
--- -- ```
+-- So we have the following rule of thumb: whenever the type of function `h` mentions function `f` at the type level, every argument that gets pattern matched on in `f` (including any internal function calls) should be made explicit in `h` and every other argument can be left implicit (there are a few exceptions to this rule, which we'll consider below, but it applies in most cases).
 
--- -- Analogously to `listId` we can define `fId` that works for any `F : Set -> Set`, including `List`:
+-- #### Example 1: `_+′_`
 
--- -- ```agda
--- --   fId : ∀ {F : Set -> Set} {A} -> F A -> F A
--- --   fId a = a
--- -- ```
+-- `idᵥ⁺` mentions `_+′_` in its type:
 
--- -- Unfortunately applying `fId` to a list without explicitly instantiating `F` as `List`
+--       idᵥ⁺ : ∀ {A n m} -> Vec A (n +′ m) -> Vec A (n +′ m)
 
--- -- ```agda
--- --   _ = fId (1 ∷ 2 ∷ [])
--- -- ```
+-- and `_+′_` pattern matches on `n`, hence Agda won't be able to infer `n`, i.e. the user will have to provide and so it should be made explicit:
 
--- -- results in both `F` and `A` not being resolved. This might be surprising, but there is a good reason for this behavior: there are multiple ways `F` and `A` can be instantiated, so Agda doesn't attempt to pick a random one. Here's the solution that the user would probably have had in their mind:
+--       idᵥ⁺ : ∀ {A m} n -> Vec A (n +′ m) -> Vec A (n +′ m)
 
--- --       _F := List
--- --       _A := ℕ
+-- At the same time `_+′_` doesn't match on its second argument, `m`, hence we leave it implicit.
 
--- -- but this one is also valid:
+-- #### Example 2: `_∸_`
 
--- --       _F := λ _ -> List ℕ
--- --       _A := Bool
+-- A function mentioning `_∸_`
 
--- -- i.e. `F` ignores `A` and just returns `List ℕ`:
+--       _-_ : ℕ -> ℕ -> ℕ
+--       n     - zero  = n
+--       zero  - suc m = zero
+--       suc n - suc m = n - m
 
--- -- ```agda
--- --   _ = fId {λ _ -> List ℕ} {Bool} (1 ∷ 2 ∷ [])
--- -- ```
+-- at type level has to receive both the arguments that get fed to `_∸_` explicitly as `_∸_` matches on both of them:
 
--- -- Even if you specify `A = ℕ`, `F` still can be either `List` or `λ _ -> List ℕ`, so you have to specify `F` (and then the problem reduces to the one that we considered earlier, hence there is no need to also specify `A`):
+-- ```agda
+--   idᵥ⁻ : ∀ {A} n m -> Vec A (n ∸ m) -> Vec A (n ∸ m)
+--   idᵥ⁻ n m xs = xs
+-- ```
 
--- -- ```agda
--- --   _ = fId {List} (1 ∷ 2 ∷ [])
--- -- ```
+-- and none of
 
--- -- Therefore, `F A` (where `F` is a type variable) uniquely determines neither `F` nor `A`, i.e. `F A !⇉ F , A`.
+-- ```agda
+--   _ = idᵥ⁻ 2 _ (1 ∷ᵥ []ᵥ)  -- `m` can't be inferred
+--   _ = idᵥ⁻ _ 1 (1 ∷ᵥ []ᵥ)  -- `n` can't be inferred
+-- ```
 
--- -- ### Comparison to Haskell
+-- is accepted unlike
 
--- -- A type application of a variable is injective in Haskell. I.e. unification of `f a` and `g b` (where `f` and `g` are type variables) forces unification of `a` and `b`, as well as unification of `f` and `g`. I.e. not only does `f a ⇉ a` hold for arbitrary type variable `f`, but also `f a ⇉ f`. This makes it possible to define functions like
+-- ```agda
+--   _ = idᵥ⁻ 2 1 (1 ∷ᵥ []ᵥ)
+-- ```
 
--- --       fmap :: Functor f => (a -> b) -> f a -> f b
+-- #### Example 3: `_*_`
 
--- -- and use them without compulsively specifying `f` at the call site each time.
+-- A function mentioning `_*_`
 
--- -- Haskell is able to infer `f`, because no analogue of Agda's `λ _ -> List ℕ` is possible in Haskell as its surface language doesn't have type lambdas. You can't pass a type family as `f` either. Therefore there exists only one solution for "unify `f a` with `List Int`" in Haskell and it's the expected one:
+--       _*_ : ℕ -> ℕ -> ℕ
+--       zero  * m = zero
+--       suc n * m = m + n * m
 
--- --       f := List
--- --       a := Int
+-- at the type level has to receive both the arguments that get fed to `_*_` explicitly, even though `_*_` doesn't directly match on `m`. This is because in the second clause `_*_` expands to `_+_`, which does match on `m`. So it's
 
--- -- For a type family `F` we have `F a !⇉ a` (just like in Agda), unless `F` is an [injective type family](https://gitlab.haskell.org/ghc/ghc/wikis/injective-type-families).
+-- ```agda
+--   idᵥ* : ∀ {A} n m -> Vec A (n * m) -> Vec A (n * m)
+--   idᵥ* n m xs = xs
+-- ```
 
--- -- ## Data constructors
+-- and none of
 
--- -- ```agda
--- -- module DataConstructors where
--- -- ```
+-- ```agda
+--   _ = idᵥ* 2 _ (1 ∷ᵥ 2 ∷ᵥ []ᵥ)  -- `m` can't be inferred
+--   _ = idᵥ* _ 1 (1 ∷ᵥ 2 ∷ᵥ []ᵥ)  -- `n` can't be inferred
+-- ```
 
--- -- Data constructors are injective from the unification point of view and from the theoretical point of view as well (unlike type constructors). E.g. consider the type of vectors (a vector is a list whose length is statically known):
+-- type check, unlike
 
--- -- ```agda
--- --   infixr 5 _∷ᵥ_
--- --   data Vec (A : Set) : ℕ -> Set where
--- --     []ᵥ  : Vec A 0
--- --     _∷ᵥ_ : ∀ {n} -> A -> Vec A n -> Vec A (suc n)
--- -- ```
+-- ```agda
+--   _ = idᵥ* 2 1 (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
+-- ```
 
--- -- The `head` function is defined like that over `Vec`:
+-- #### Example 4: `_+′_`, two arguments
 
--- -- ```agda
--- --   headᵥ : ∀ {A n} -> Vec A (suc n) -> A
--- --   headᵥ (x ∷ᵥ _) = x
--- -- ```
+-- With this definition:
 
--- -- I.e. we require an input vector to have at least one element and return that first element.
+-- ```agda
+--   ignore2 : ∀ n m -> Vec ℕ (n +′ m) -> Vec ℕ (m +′ n) -> ℕ
+--   ignore2 _ _ _ _ = 0
+-- ```
 
--- -- `n` can be left implicit, because `suc n ⇉ n`. In general, for a constructor `C` the following holds:
+-- it suffices to explicitly provide either `n` or `m`:
 
--- --       C x₁ x₂ ... xₙ ⇉ x₁ , x₂ ... xₙ
+-- ```agda
+--   _ = ignore2 2 _ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ)
+--   _ = ignore2 _ 1 (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ)
+-- ```
 
--- -- A simple test:
+-- This is because with explicitly provided `n` Agda can determine `m` from `n +′ m` and with explicitly provided `m` Agda can determine `n` from `m +′ n`.
 
--- -- ```agda
--- --   _ = headᵥ (0 ∷ᵥ []ᵥ)
--- -- ```
+-- #### Example 5: nested `_+′_`, two arguments
 
--- -- Here we pass a one-element vector to `headᵥ` and Agda succesfully infers the implicit `n` of `headᵥ` to be `0` (i.e. no elements in the vector apart from the first one).
+-- In the following definition we have multiple mentions of `_+′_` at the type level:
 
--- -- During unification the implicit `n` gets instantiated to a metavariable, say, `_n` and `suc _n` (the expected length of the vector) gets unified with `suc zero` (i.e. 1, the actual length of the vector), which amounts to unifying `_n` with `zero`, which immediately results in `n := zero`.
+-- ```agda
+--   ignore2p : ∀ {m p} n -> Vec ℕ (n +′ (m +′ p)) -> Vec ℕ (n +′ m) -> ℕ
+--   ignore2p _ _ _ = 0
+-- ```
 
--- -- Instead of having a constant vector, we can have a vector of an unspecified length and infer that length by providing `n` to `headᵥ` explicitly, as in
+-- and three variables used as arguments to `_+′_`, yet only the `n` variable needs to be bound explicitly. This is due to the fact that it's enough to know `n` to determine what `m` is (from `Vec ℕ (n +′ m)`) and then knowing both `n` and `m` is enough to determine what `p` is (from `Vec ℕ (n +′ (m +′ p))`). Which can be written as
 
--- -- ```agda
--- --   _ = λ {n} xs -> headᵥ {ℕ} {n} xs
--- -- ```
+--            n
+--            →
+--       n    m
+--       →→→→→→
+--          p
 
--- -- The type of that definition is `∀ {n} -> Vec ℕ (suc n) -> ℕ`.
+-- Note that the order of the `Vec` arguments doesn't matter, Agda will postpone resolving a metavariable until there is enough info to resolve it.
 
--- -- We started by binding two variables without specifying their types, but those got inferred from how arguments are used by `headᵥ`.
+-- A test:
 
--- -- Note that `_⇉_` is transitive, i.e. if `X ⇉ Y` and `Y ⇉ Z`, then `X ⇉ Z`. For example, since `Vec A n ⇉ n` (due to `Vec` being a type constructor) and `suc n ⇉ n` (due to `suc` being a data constructor), we have `Vec A (suc n) ⇉ n` (by transitivity of `_⇉_`).
+-- ```agda
+--   _ = ignore2p 1 (3 ∷ᵥ 4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
+-- ```
 
--- -- ## Reduction
+-- #### Example 6: nested `_+′_`, one argument
 
--- -- If `X` reduces to `Y` (we'll denote that as `X ~> Y`) and `Y ⇉ Z`, then `X ⇉ Z`.
+-- A very similar example:
 
--- -- E.g. if we define an alternative version of `headᵥ` that uses `1 +_` instead of `suc`:
+-- ```agda
+--   ignore1p : ∀ {m p} n -> Vec (Vec ℕ (n +′ m)) (n +′ (m +′ p)) -> ℕ
+--   ignore1p _ _ = 0
+-- ```
 
--- -- ```agda
--- --   headᵥ⁺ : ∀ {A n} -> Vec A (1 + n) -> A
--- --   headᵥ⁺ (x ∷ᵥ _) = x
--- -- ```
+-- Just like in the previous case it's enough to provide only `n` explicitly as the same
 
--- -- the `n` will still be inferrable:
+--            n
+--            →
+--       n    m
+--       →→→→→→
+--          p
 
--- -- ```agda
--- --   _ = headᵥ⁺ (0 ∷ᵥ []ᵥ)
--- -- ```
+-- logic applies. Test:
 
--- -- This is because `1 + n` reduces to `suc n`, so the two definitions are equivalent.
+-- ```agda
+--   _ = ignore1p 1 ((1 ∷ᵥ 2 ∷ᵥ []ᵥ) ∷ᵥ (3 ∷ᵥ 4 ∷ᵥ []ᵥ) ∷ᵥ (5 ∷ᵥ 6 ∷ᵥ []ᵥ) ∷ᵥ []ᵥ)
+-- ```
 
--- -- Note however that a "morally" equivalent definition:
+-- #### Large elimination
 
--- --       headᵥ⁺-wrong : ∀ {A n} -> Vec A (n + 1) -> A
--- --       headᵥ⁺-wrong (x ∷ᵥ _) = x
+-- ```agda
+-- module LargeElimination where
+--   open BasicsOfTypeInference
+-- ```
 
--- -- does not type check giving:
+-- So far we've been talking about functions that pattern match on terms and return terms, but in Agda we can also pattern match on terms and return types. Consider
 
--- --       I'm not sure if there should be a case for the constructor _∷ᵥ_,
--- --       because I get stuck when trying to solve the following unification
--- --       problems (inferred index ≟ expected index):
--- --         suc n ≟ n₁ + 1
--- --       when checking that the pattern x ∷ᵥ _ has type Vec A (n + 1)
+-- ```agda
+--   ListOfBoolOrℕ : Bool -> Set
+--   ListOfBoolOrℕ false = List Bool
+--   ListOfBoolOrℕ true  = List ℕ
+-- ```
 
--- -- That's because `_+_` is defined by pattern matching on its left operand, so `1 + n` computes while `n + 1` is stuck and does not compute as `n` is a variable rather than an expression starting with a constructor of `ℕ`. `headᵥ⁺-wrong` `is a contrived example, but this problem can arise in real cases, for example consider a naive attempt to define the `reverse` function over `Vec` using an accumulator, the helper type checks perfectly:
+-- This function matches on a `Bool` argument and returns *the type* of lists with the type of elements depending on the `Bool` argument.
 
--- -- ```agda
--- --   reverse-go : ∀ {A n m} -> Vec A m -> Vec A n -> Vec A (n + m)
--- --   reverse-go acc  []ᵥ      = acc
--- --   reverse-go acc (x ∷ᵥ xs) = x ∷ᵥ reverse-go acc xs
--- -- ```
+-- Having an identity function over a `ListOfBoolOrℕ b`
 
--- -- but the final definition gives an error:
+-- ```agda
+--   idListOfBoolOrℕ : {b : Bool} -> ListOfBoolOrℕ b -> ListOfBoolOrℕ b
+--   idListOfBoolOrℕ xs = xs
+-- ```
 
--- --       -- _n_390 + 0 != n of type ℕ
--- --       reverse-wrong : ∀ {A n} -> Vec A n -> Vec A n
--- --       reverse-wrong xs = reverse-go []ᵥ xs
+-- we can show that the implicit `b` can't be inferred, as this:
 
--- -- That's because `reverse-go` is appled to `[]ᵥ` of type `Vec A 0` and `xs` of type `Vec A n`, so it returns a `Vec A (n + 0)`, which is not definitionally the same thing as `Vec A n`. We could prove that `n + 0` equals `n` for any `n` and use that proof to rewrite `Vec A (n + 0)` into `Vec A n`, but that would make it harder to prove properties about `reverse` defined this way.
+-- ```agda
+--   _ = idListOfBoolOrℕ (1 ∷ 2 ∷ 3 ∷ [])
+-- ```
 
--- -- The usual way of approaching this problem is by generalizing the helper. In the case of `reverse` we can generalize the helper to the regular `foldl` function and define `reverse` in terms of that -- that's what [they do](https://github.com/agda/agda-stdlib/blob/7c8c17b407c14c5828b8755abb7584a4878286da/src/Data/Vec/Base.agda#L270-L271) in the standard library. See [this Stack Overflow question and answer](https://stackoverflow.com/questions/33345899/how-to-enumerate-the-elements-of-a-list-by-fins-in-linear-time) for a more complex and elaborated example. Anyway, end of digression.
+-- results in unresolved metas, while this:
 
--- -- Agda looks under lambdas when reducing an expression, so for example `λ n -> 1 + n` and `λ n -> suc n` are two definitionally equal terms:
+-- ```agda
+--   _ = idListOfBoolOrℕ {b = true} (1 ∷ 2 ∷ 3 ∷ [])
+-- ```
 
--- -- ```agda
--- --   _ : (λ n -> 1 + n) ≡ (λ n -> suc n)
--- --   _ = refl
--- -- ```
+-- is accepted by the type checker.
 
--- -- Note also that Agda does not look under pattern matching lambdas, so for example these two functions
+-- The reason for this behavior is the same as with all the previous examples: pattern matching blocks inference and `ListOfBoolOrℕ` is a pattern matching function.
 
--- --       λ{ zero -> zero; (suc n) -> 1 + n }
--- --       λ{ zero -> zero; (suc n) -> suc n }
+-- ### Generalization
 
--- -- are not considered definitionally equal. In fact, even
+-- ```agda
+-- module Generalization where
+-- ```
 
--- --       _ : _≡_ {A = ℕ -> ℕ}
--- --           (λ{ zero -> zero; (suc n) -> suc n })
--- --           (λ{ zero -> zero; (suc n) -> suc n })
--- --       _ = refl
+-- In general: given a function `f` that receives `n` arguments on which there's pattern matching anywhere in the definition of `f` (including calls to other functions in the body of `f`) and `m` arguments on which there is no pattern matching, we have the following rule (for simplicity of presentation we place `pᵢ` before `xⱼ`, but the same rule works when they're interleaved)
 
--- -- is an error despite the two functions being syntactically equal. Here's the funny error:
+--       p₁    ...    pₙ        (f p₁ ... pₙ x₁ ... xₘ)
+--       →→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→
+--                     x₁    ...    xₘ
 
--- --       (λ { zero → zero ; (suc n) → suc n }) x !=
--- --       (λ { zero → zero ; (suc n) → suc n }) x of type ℕ
--- --       when checking that the expression refl has type
--- --       (λ { zero → zero ; (suc n) → suc n }) ≡
--- --       (λ { zero → zero ; (suc n) → suc n })
+-- i.e. if every `pᵢ` can be inferred from the current context, then every `xⱼ` can be inferred from `f p₁ ... pₙ x₁ ... xₘ`.
 
--- -- ## Pattern matching
+-- There is an important exception from this rule and this is what comes next.
 
--- -- Generally speaking, pattern matching breaks inference. We'll consider various cases, but to start with the simplest ones we need to introduce a slightly weird definition of the plus operator:
+-- ### [Constructor-headed functions](https://wiki.portal.chalmers.se/agda/pmwiki.php?n=ReferenceManual.FindingTheValuesOfImplicitArguments)
 
--- -- ```agda
--- -- module WeirdPlus where
--- --   open DataConstructors
+-- ```agda
+-- module ConstructorHeadedFunctions where
+--   open BasicsOfTypeInference
+--   open DataConstructors
+-- ```
 
--- --   _+′_ : ℕ -> ℕ -> ℕ
--- --   zero  +′ m = m
--- --   suc n +′ m = n + suc m
--- -- ```
+-- Consider a definition of `ListOfBoolOrℕ` that is slightly different from the previous one, but is isomorphic to it:
 
--- -- because the usual one
+-- ```agda
+--   BoolOrℕ : Bool -> Set
+--   BoolOrℕ false = Bool
+--   BoolOrℕ true  = ℕ
 
--- --       _+_ : ℕ -> ℕ -> ℕ
--- --       zero  + m = m
--- --       suc n + m = suc (n + m)
+--   ListOfBoolOrℕ′ : Bool -> Set
+--   ListOfBoolOrℕ′ b = List (BoolOrℕ b)
+-- ```
 
--- -- is subject to certain unification heuristics, which the weird one doesn't trigger.
+-- Here `ListOfBoolOrℕ′` does not do any pattern matching itself and instead immediately returns `List (BoolOrℕ b)` with pattern matching performed in `BoolOrℕ b`. There's still pattern matching on `b` and the fact that it's inside another function call in the body of `ListOfBoolOrℕ′` does not change anything as we've discussed previously. Yet `id` defined over such lists:
 
--- -- We'll be using the following function for demonstration purposes:
+-- ```agda
+--   idListOfBoolOrℕ′ : {b : Bool} -> ListOfBoolOrℕ′ b -> ListOfBoolOrℕ′ b
+--   idListOfBoolOrℕ′ xs = xs
+-- ```
 
--- -- ```agda
--- --   idᵥ⁺ : ∀ {A n m} -> Vec A (n +′ m) -> Vec A (n +′ m)
--- --   idᵥ⁺ xs = xs
--- -- ```
+-- does not require the user to provide `b` explicitly, i.e. the following type checks just fine:
 
--- -- ### A constant argument
+-- ```agda
+--   _ = idListOfBoolOrℕ′ (1 ∷ 2 ∷ 3 ∷ [])
+-- ```
 
--- -- `idᵥ⁺` applied to a constant vector
+-- This works as follows: the expected type of an argument (`ListOfBoolOrℕ′ _b`) gets unified with the actual one (`List ℕ`):
 
--- -- ```agda
--- --   _ = idᵥ⁺ (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
--- -- ```
+--       ListOfBoolOrℕ′ _b =?= List ℕ
 
--- -- gives us yellow, because Agda turns the implicit `n` and `m` into metavariables `_n` and `_m` and tries to unify the expected length of a vector (`_n +′ _m`) with the actual one (`2`) and there are multiple solutions to this problem, e.g.
+-- after expanding `ListOfBoolOrℕ′` we get
 
--- -- ```agda
--- --   _ = idᵥ⁺ {n = 1} {m = 1} (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
--- --   _ = idᵥ⁺ {n = 2} {m = 0} (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
--- -- ```
+--       List (BoolOrℕ _b) =?= List ℕ
 
--- -- Howewer as per the previous the section, we do not really need to specify `m`, since `_+′_` is defined by recursion on `n` and hence for it to reduce it suffices to specify only `n`:
+-- as usual `List` gets stripped from both the sides of the equation:
 
--- -- ```agda
--- --   _ = idᵥ⁺ {n = 1} (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
--- -- ```
+--       BoolOrℕ _b =?= ℕ
 
--- -- since with `n` specified this way the `_n` metavariable gets resolved as `_n := 1` and the expected length of an argument, `_n +′ _m`, becomes `suc m`, which Agda knows how to unify with `2` (the length of the actual argument).
+-- and here Agda has a special rule, quoting the wiki:
 
--- -- Specifying `m` instead of `n` won't work though:
+-- > If all right hand sides of a function definition have distinct (type or value) constructor heads, we can deduce the shape of the arguments to the function by looking at the head of the expected result.
 
--- -- ```agda
--- --   _ = idᵥ⁺ {m = 1} (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
--- -- ```
+-- In our case two "constructor heads" in the definition of `BoolOrℕ` are `Bool` and `ℕ`, which are distinct, and that makes Agda see that `BoolOrℕ` is injective, so unifying `BoolOrℕ _b` with `ℕ` amounts to finding the clause where `ℕ` is returted from `BoolOrℕ`, which is
 
--- -- Agda can't resolve `_n`. This is because `_+′_` is defined by pattern matching on its first variable, so `1 +′ m` reduces to `suc m`, but `n +′ 1` is stuck and doesn't reduce to anything when `n` is a variable/metavariable/any stuck term. So even though there's a single solution to the
+--       BoolOrℕ true  = ℕ
 
--- --       n +′ 1 =?= 2
+-- and this determines that for the result to be `ℕ` the value of `_b` must be `true`, so the unification problem gets solved as
 
--- -- unification problem, Agda is not able to come up with it, because this would require arbitrary search in the general case and Agda's unification machinery carefully avoids any such strategies.
+--       _b := true
 
--- -- ### A non-constant argument
+-- `BoolOrℕ` differs from
 
--- -- `idᵥ⁺` applied to a non-constant vector has essentially the same inference properties.
+--       ListOfBoolOrℕ : Bool -> Set
+--       ListOfBoolOrℕ false = List Bool
+--       ListOfBoolOrℕ true  = List ℕ
 
--- -- Without specializing the implicit arguments we get yellow:
+-- in that the latter definition has the same head in both the clauses (`List`) and so the heuristic doesn't apply. Even though Agda really could have figured out that `ListOfBoolOrℕ` is also injective. I.e. the fact that `ListOfBoolOrℕ` is not consdered invertible is more of an implementation detail than a theoretical limination.
 
--- -- ```agda
--- --   _ = λ n m (xs : Vec ℕ (n +′ m)) -> idᵥ⁺ xs
--- -- ```
+-- Here's an example of a theoretical limitation: a definition like
 
--- -- Specializing `m` doesn't help, still yellow:
+-- ```agda
+--   BoolOrBool : Bool -> Set
+--   BoolOrBool true  = Bool
+--   BoolOrBool false = Bool
+-- ```
 
--- -- ```agda
--- --   _ = λ n m (xs : Vec ℕ (n +′ m)) -> idᵥ⁺ {m = m} xs
--- -- ```
+-- can't be inverted, because the result (`Bool` in both the cases) does not determine the argument (either `true` or `false`).
 
--- -- And specializing `n` (with or without `m`) allows Agda to resolve all the metas:
+-- #### Example 1: universe of types
 
--- -- ```agda
--- --   _ = λ n m (xs : Vec ℕ (n +′ m)) -> idᵥ⁺ {n = n} xs
--- --   _ = λ n m (xs : Vec ℕ (n +′ m)) -> idᵥ⁺ {n = n} {m = m} xs
--- -- ```
+-- There's a standard technique ([the universe pattern](https://groups.google.com/forum/#!msg/idris-lang/N9_pVqG8dO8/mHlNmyL6AwAJ)) that allows us to get ad hoc polymorphism (a.k.a. type classes) for a closed set of types in a dependently typed world.
 
--- -- ### Examples
+-- We introduce a universe of types, which is a data type containing tags for actual types:
 
--- -- So we have the following rule of thumb: whenever the type of function `h` mentions function `f` at the type level, every argument that gets pattern matched on in `f` (including any internal function calls) should be made explicit in `h` and every other argument can be left implicit (there are a few exceptions to this rule, which we'll consider below, but it applies in most cases).
+-- ```agda
+--   data Uni : Set where
+--     bool nat : Uni
+--     list : Uni -> Uni
+-- ```
 
--- -- #### Example 1: `_+′_`
+-- interpret those tags as types that they encode:
 
--- -- `idᵥ⁺` mentions `_+′_` in its type:
+-- ```agda
+--   ⟦_⟧ : Uni -> Set
+--   ⟦ bool   ⟧ = Bool
+--   ⟦ nat    ⟧ = ℕ
+--   ⟦ list A ⟧ = List ⟦ A ⟧
+-- ```
 
--- --       idᵥ⁺ : ∀ {A n m} -> Vec A (n +′ m) -> Vec A (n +′ m)
+-- and then mimic the `Eq` type class for the types from this universe by directly defining equality functions:
 
--- -- and `_+′_` pattern matches on `n`, hence Agda won't be able to infer `n`, i.e. the user will have to provide and so it should be made explicit:
+-- ```agda
+--   _==Bool_ : Bool -> Bool -> Bool
+--   true  ==Bool true  = true
+--   false ==Bool false = true
+--   _     ==Bool _     = false
 
--- --       idᵥ⁺ : ∀ {A m} n -> Vec A (n +′ m) -> Vec A (n +′ m)
+--   _==ℕ_ : ℕ -> ℕ -> Bool
+--   zero  ==ℕ zero  = true
+--   suc n ==ℕ suc m = n ==ℕ m
+--   _     ==ℕ _     = false
 
--- -- At the same time `_+′_` doesn't match on its second argument, `m`, hence we leave it implicit.
+--   mutual
+--     _==List_ : ∀ {A} -> List ⟦ A ⟧ -> List ⟦ A ⟧ -> Bool
+--     []       ==List []       = true
+--     (x ∷ xs) ==List (y ∷ ys) = (x == y) && (xs ==List ys)
+--     _        ==List _        = false
 
--- -- #### Example 2: `_∸_`
+--     _==_ : ∀ {A} -> ⟦ A ⟧ -> ⟦ A ⟧ -> Bool
+--     _==_ {nat   } x y = x ==ℕ    y
+--     _==_ {bool  } x y = x ==Bool y
+--     _==_ {list A} x y = x ==List y
+-- ```
 
--- -- A function mentioning `_∸_`
+-- `_==_` checks equality of two elements from any type from the universe.
 
--- --       _-_ : ℕ -> ℕ -> ℕ
--- --       n     - zero  = n
--- --       zero  - suc m = zero
--- --       suc n - suc m = n - m
+-- Note that `_==List_` is defined mutually with `_==_`, because elements of lists can be of any type from the universe, i.e. they can also be lists, hence the mutual recursion.
 
--- -- at type level has to receive both the arguments that get fed to `_∸_` explicitly as `_∸_` matches on both of them:
+-- A few tests:
 
--- -- ```agda
--- --   idᵥ⁻ : ∀ {A} n m -> Vec A (n ∸ m) -> Vec A (n ∸ m)
--- --   idᵥ⁻ n m xs = xs
--- -- ```
+-- ```agda
+--   -- Check equality of two equal elements of `ℕ`.
+--   _ : (42 == 42) ≡ true
+--   _ = refl
 
--- -- and none of
+--   -- Check equality of two non-equal elements of `List Bool`.
+--   _ : ((true ∷ []) == (false ∷ [])) ≡ false
+--   _ = refl
 
--- -- ```agda
--- --   _ = idᵥ⁻ 2 _ (1 ∷ᵥ []ᵥ)  -- `m` can't be inferred
--- --   _ = idᵥ⁻ _ 1 (1 ∷ᵥ []ᵥ)  -- `n` can't be inferred
--- -- ```
+--   -- Check equality of two equal elements of `List (List ℕ)`.
+--   _ : (((4 ∷ 81 ∷ []) ∷ (57 ∷ 2 ∷ []) ∷ []) == ((4 ∷ 81 ∷ []) ∷ (57 ∷ 2 ∷ []) ∷ [])) ≡ true
+--   _ = refl
 
--- -- is accepted unlike
+--   -- Check equality of two non-equal elements of `List (List ℕ)`.
+--   _ : (((4 ∷ 81 ∷ []) ∷ (57 ∷ 2 ∷ []) ∷ []) == ((4 ∷ 81 ∷ []) ∷ [])) ≡ false
+--   _ = refl
+-- ```
 
--- -- ```agda
--- --   _ = idᵥ⁻ 2 1 (1 ∷ᵥ []ᵥ)
--- -- ```
+-- It's possible to leave `A` implicit in `_==_` and get it inferred in the tests above precisely because `⟦_⟧` is constructor-headed. If we had `bool₁` and `bool₂` tags both mapping to `Bool`, inference for `_==_` would not work for booleans, lists of booleans etc. In the version of Agda I'm using inference for naturals, lists of naturals etc still works though, if an additional `bool` is added to the universe, i.e. breaking constructor-headedness of a function for certain arguments does not result in inference being broken for others.
 
--- -- #### Example 3: `_*_`
+-- #### Example 2: `boolToℕ`
 
--- -- A function mentioning `_*_`
+-- Constructor-headed functions can also return values rather than types. For example this function:
 
--- --       _*_ : ℕ -> ℕ -> ℕ
--- --       zero  * m = zero
--- --       suc n * m = m + n * m
+-- ```agda
+--   boolToℕ : Bool -> ℕ
+--   boolToℕ false = zero
+--   boolToℕ true  = suc zero
+-- ```
 
--- -- at the type level has to receive both the arguments that get fed to `_*_` explicitly, even though `_*_` doesn't directly match on `m`. This is because in the second clause `_*_` expands to `_+_`, which does match on `m`. So it's
+-- is constructor-headed, because in the two clauses heads are constructors and they're different (`zero` vs `suc`).
 
--- -- ```agda
--- --   idᵥ* : ∀ {A} n m -> Vec A (n * m) -> Vec A (n * m)
--- --   idᵥ* n m xs = xs
--- -- ```
+-- So if we define a version of `id` that takes a `Vec` with either 0 or 1 element:
 
--- -- and none of
+-- ```agda
+--   idVecAsMaybe : ∀ {b} -> Vec ℕ (boolToℕ b) -> Vec ℕ (boolToℕ b)
+--   idVecAsMaybe xs = xs
+-- ```
 
--- -- ```agda
--- --   _ = idᵥ* 2 _ (1 ∷ᵥ 2 ∷ᵥ []ᵥ)  -- `m` can't be inferred
--- --   _ = idᵥ* _ 1 (1 ∷ᵥ 2 ∷ᵥ []ᵥ)  -- `n` can't be inferred
--- -- ```
+-- then it won't be necessary to specify `b`:
 
--- -- type check, unlike
+-- ```agda
+--   _ = idVecAsMaybe []ᵥ
+--   _ = idVecAsMaybe (0 ∷ᵥ []ᵥ)
+-- ```
 
--- -- ```agda
--- --   _ = idᵥ* 2 1 (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
--- -- ```
+-- as Agda knows how to solve `boolToℕ _b =?= zero` or `boolToℕ _b =?= suc zero` due to `boolToℕ` being invertible.
 
--- -- #### Example 4: `_+′_`, two arguments
+-- `idVecAsMaybe` supplied with a vector of length greater than `1` correctly gives an error (as opposed to merely reporting that there's an unsolved meta):
 
--- -- With this definition:
+--       -- suc _n_624 != zero of type ℕ
+--       _ = idVecAsMaybe (0 ∷ᵥ 1 ∷ᵥ []ᵥ)
 
--- -- ```agda
--- --   ignore2 : ∀ n m -> Vec ℕ (n +′ m) -> Vec ℕ (m +′ n) -> ℕ
--- --   ignore2 _ _ _ _ = 0
--- -- ```
+-- Note that `boolToℕ` defined like that:
 
--- -- it suffices to explicitly provide either `n` or `m`:
+-- ```agda
+--   boolToℕ′ : Bool -> ℕ
+--   boolToℕ′ false = zero + zero
+--   boolToℕ′ true  = suc zero
+-- ```
 
--- -- ```agda
--- --   _ = ignore2 2 _ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ)
--- --   _ = ignore2 _ 1 (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ)
--- -- ```
+-- is not considered to be constructor-headed, because Agda does not attempt to unfold recursive definitions in the RHS of a clause of a function. With this definition the second test in
 
--- -- This is because with explicitly provided `n` Agda can determine `m` from `n +′ m` and with explicitly provided `m` Agda can determine `n` from `m +′ n`.
+-- ```agda
+--   idVecAsMaybe′ : ∀ {b} -> Vec ℕ (boolToℕ′ b) -> Vec ℕ (boolToℕ′ b)
+--   idVecAsMaybe′ xs = xs
 
--- -- #### Example 5: nested `_+′_`, two arguments
+--   _ = idVecAsMaybe′ []ᵥ
+--   _ = idVecAsMaybe′ (0 ∷ᵥ []ᵥ)
+-- ```
 
--- -- In the following definition we have multiple mentions of `_+′_` at the type level:
+-- is yellow. But not the first one. I guess with `idVecAsMaybe′ []ᵥ` Agda tries to unify `zero` (the actual length of the vector) with both the RHSes of `boolToℕ′` and since `zero` is definitely not equal to `suc zero`, only the `zero + zero` case remains, so Agda finally decides to reduce that expression to find out that it indeed equals to `zero`.
 
--- -- ```agda
--- --   ignore2p : ∀ {m p} n -> Vec ℕ (n +′ (m +′ p)) -> Vec ℕ (n +′ m) -> ℕ
--- --   ignore2p _ _ _ = 0
--- -- ```
+-- ### Constructor/argument-headed functions
 
--- -- and three variables used as arguments to `_+′_`, yet only the `n` variable needs to be bound explicitly. This is due to the fact that it's enough to know `n` to determine what `m` is (from `Vec ℕ (n +′ m)`) and then knowing both `n` and `m` is enough to determine what `p` is (from `Vec ℕ (n +′ (m +′ p))`). Which can be written as
+-- ```agda
+-- module ConstructorArgumentHeadedFunctions where
+--   open DataConstructors
+-- ```
 
--- --            n
--- --            →
--- --       n    m
--- --       →→→→→→
--- --          p
+-- Recall that we've been using a weird definition of plus
 
--- -- Note that the order of the `Vec` arguments doesn't matter, Agda will postpone resolving a metavariable until there is enough info to resolve it.
+-- > because the usual one
+-- >
+-- >       _+_ : ℕ -> ℕ -> ℕ
+-- >       zero  + m = m
+-- >       suc n + m = suc (n + m)
+-- >
+-- > is subject to certain unification heuristics, which the weird one doesn't trigger.
 
--- -- A test:
+-- The usual definition is this one:
 
--- -- ```agda
--- --   _ = ignore2p 1 (3 ∷ᵥ 4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
--- -- ```
+--       _+_ : ℕ -> ℕ -> ℕ
+--       zero  + m = m
+--       suc n + m = suc (n + m)
 
--- -- #### Example 6: nested `_+′_`, one argument
+-- As you can see here we return one of the arguments in the first clause and the second clause is constructor-headed. Just like for regular constructor-headed function, Agda has enhanced inference for functions of this kind as well.
 
--- -- A very similar example:
+-- Quoting the [changelog](https://github.com/agda/agda/blob/064095e14042bdf64c7d7c97c2869f63f5f1f8f6/doc/release-notes/2.5.4.md#pattern-matching):
 
--- -- ```agda
--- --   ignore1p : ∀ {m p} n -> Vec (Vec ℕ (n +′ m)) (n +′ (m +′ p)) -> ℕ
--- --   ignore1p _ _ = 0
--- -- ```
+-- > Improved constraint solving for pattern matching functions
+-- > Constraint solving for functions where each right-hand side has a distinct rigid head has been extended to also cover the case where some clauses return an argument of the function. A typical example is append on lists:
+-- >
+-- >       _++_ : {A : Set} → List A → List A → List A
+-- >       []       ++ ys = ys
+-- >       (x ∷ xs) ++ ys = x ∷ (xs ++ ys)
+-- >
+-- > Agda can now solve constraints like `?X ++ ys == 1 ∷ ys` when `ys` is a neutral term.
 
--- -- Just like in the previous case it's enough to provide only `n` explicitly as the same
+-- #### Example 1: back to `idᵥ⁺`
 
--- --            n
--- --            →
--- --       n    m
--- --       →→→→→→
--- --          p
+-- Now if we come back to this example:
 
--- -- logic applies. Test:
+-- <blockquote>
+-- <p><code>idᵥ⁺</code> applied to a non-constant vector has essentially the same inference properties.</p>
+-- <p>Without specializing the implicit arguments we get yellow:</p>
+-- <pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-symbol">&#955;</span> <span class="agda2-highlight-bound-variable">n</span> <span class="agda2-highlight-bound-variable">m</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-bound-variable">xs</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-datatype">Vec</span> <span class="agda2-highlight-datatype">&#8469;</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-bound-variable">n</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-function">+&#8242;</span></span> <span class="agda2-highlight-bound-variable">m</span><span class="agda2-highlight-symbol">))</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-function"><span class="agda2-highlight-unsolved-meta">id&#7525;&#8314;</span></span> <span class="agda2-highlight-unsolved-constraint"><span class="agda2-highlight-unsolved-meta"><span class="agda2-highlight-bound-variable">xs</span></span></span>
+-- </pre>
+-- <p>Specializing <code>m</code> doesn't help, still yellow:</p>
+-- <pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-symbol">&#955;</span> <span class="agda2-highlight-bound-variable">n</span> <span class="agda2-highlight-bound-variable">m</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-bound-variable">xs</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-datatype">Vec</span> <span class="agda2-highlight-datatype">&#8469;</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-bound-variable">n</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-function">+&#8242;</span></span> <span class="agda2-highlight-bound-variable">m</span><span class="agda2-highlight-symbol">))</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-function"><span class="agda2-highlight-unsolved-meta">id&#7525;&#8314;</span></span> <span class="agda2-highlight-symbol">{</span>m <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-bound-variable">m</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-unsolved-constraint"><span class="agda2-highlight-unsolved-meta"><span class="agda2-highlight-bound-variable">xs</span></span></span>
+-- </pre>
+-- </blockquote>
 
--- -- ```agda
--- --   _ = ignore1p 1 ((1 ∷ᵥ 2 ∷ᵥ []ᵥ) ∷ᵥ (3 ∷ᵥ 4 ∷ᵥ []ᵥ) ∷ᵥ (5 ∷ᵥ 6 ∷ᵥ []ᵥ) ∷ᵥ []ᵥ)
--- -- ```
+-- but define `idᵥ⁺` over `_+_` rather than `_+′_`:
 
--- -- #### Large elimination
+-- ```agda
+--   idᵥ⁺ : ∀ {A n m} -> Vec A (n + m) -> Vec A (n + m)
+--   idᵥ⁺ xs = xs
+-- ```
 
--- -- ```agda
--- -- module LargeElimination where
--- --   open BasicsOfTypeInference
--- -- ```
+-- then supplying only `m` explicitly:
 
--- -- So far we've been talking about functions that pattern match on terms and return terms, but in Agda we can also pattern match on terms and return types. Consider
+-- ```agda
+--   _ = λ n m (xs : Vec ℕ (n + m)) -> idᵥ⁺ {m = m} xs
+-- ```
 
--- -- ```agda
--- --   ListOfBoolOrℕ : Bool -> Set
--- --   ListOfBoolOrℕ false = List Bool
--- --   ListOfBoolOrℕ true  = List ℕ
--- -- ```
+-- satisfies the type checker due to `_+_` being constructor/argument-headed.
 
--- -- This function matches on a `Bool` argument and returns *the type* of lists with the type of elements depending on the `Bool` argument.
+-- And
 
--- -- Having an identity function over a `ListOfBoolOrℕ b`
+-- ```agda
+--   _ = λ n m (xs : Vec ℕ (n + m)) -> idᵥ⁺ xs
+-- ```
 
--- -- ```agda
--- --   idListOfBoolOrℕ : {b : Bool} -> ListOfBoolOrℕ b -> ListOfBoolOrℕ b
--- --   idListOfBoolOrℕ xs = xs
--- -- ```
+-- still gives yellow, because it's still inherently ambiguous.
 
--- -- we can show that the implicit `b` can't be inferred, as this:
+-- Additionally, this now also type checks:
 
--- -- ```agda
--- --   _ = idListOfBoolOrℕ (1 ∷ 2 ∷ 3 ∷ [])
--- -- ```
+-- ```agda
+--   _ = idᵥ⁺ {m = 0} (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
+-- ```
 
--- -- results in unresolved metas, while this:
+-- This is because instantiating `m` at `0` in `idᵥ⁺` makes `_+_` constructor-headed, because if we inline `m` in the definition of `_+_`, we'll get:
 
--- -- ```agda
--- --   _ = idListOfBoolOrℕ {b = true} (1 ∷ 2 ∷ 3 ∷ [])
--- -- ```
+--       _+0 : ℕ -> ℕ
+--       zero  +0 = zero
+--       suc n +0 = suc (n +0)
 
--- -- is accepted by the type checker.
+-- which is clearly constructor-headed.
 
--- -- The reason for this behavior is the same as with all the previous examples: pattern matching blocks inference and `ListOfBoolOrℕ` is a pattern matching function.
+-- And
 
--- -- ### Generalization
+-- ```agda
+--   _ = idᵥ⁺ {m = 1} (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
+-- ```
 
--- -- ```agda
--- -- module Generalization where
--- -- ```
+-- still does not type check, because inlining `m` as `1` does not make `_+_` constructor-headed:
 
--- -- In general: given a function `f` that receives `n` arguments on which there's pattern matching anywhere in the definition of `f` (including calls to other functions in the body of `f`) and `m` arguments on which there is no pattern matching, we have the following rule (for simplicity of presentation we place `pᵢ` before `xⱼ`, but the same rule works when they're interleaved)
+--       _+1 : ℕ -> ℕ
+--       zero  +1 = suc zero
+--       suc n +1 = suc (n +1)
 
--- --       p₁    ...    pₙ        (f p₁ ... pₙ x₁ ... xₘ)
--- --       →→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→→
--- --                     x₁    ...    xₘ
+-- #### Example 2: polyvariadic `zipWith`: list-based
 
--- -- i.e. if every `pᵢ` can be inferred from the current context, then every `xⱼ` can be inferred from `f p₁ ... pₙ x₁ ... xₘ`.
+-- ```agda
+-- module PolyvariadicZipWith where
+--   open import Data.List.Base as List
+--   open import Data.Vec.Base as Vec renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
+-- ```
 
--- -- There is an important exception from this rule and this is what comes next.
+-- We can define this family of functions over vectors:
 
--- -- ### [Constructor-headed functions](https://wiki.portal.chalmers.se/agda/pmwiki.php?n=ReferenceManual.FindingTheValuesOfImplicitArguments)
+--       replicate : ∀ {m} → A → Vec A m
+--       map : ∀ {m} → (A → B) → Vec A m → Vec B m
+--       zipWith : ∀ {m} → (A → B → C) → Vec A m → Vec B m → Vec C m
+--       zipWith3 : ∀ {m} → (A → B → C → D) → Vec A m → Vec B m → Vec C m → Vec D m
 
--- -- ```agda
--- -- module ConstructorHeadedFunctions where
--- --   open BasicsOfTypeInference
--- --   open DataConstructors
--- -- ```
+-- (the Agda stdlib provides all of those but the last one)
 
--- -- Consider a definition of `ListOfBoolOrℕ` that is slightly different from the previous one, but is isomorphic to it:
+-- Can we define a generic function that covers all of the above? Its type signature should look like this:
 
--- -- ```agda
--- --   BoolOrℕ : Bool -> Set
--- --   BoolOrℕ false = Bool
--- --   BoolOrℕ true  = ℕ
+--       (A₁ -> A₂ -> ... -> B) -> Vec A₁ m -> Vec A₂ m -> ... -> Vec B m
 
--- --   ListOfBoolOrℕ′ : Bool -> Set
--- --   ListOfBoolOrℕ′ b = List (BoolOrℕ b)
--- -- ```
+-- Yes: we can parameterize a function by a list of types and compute those n-ary types from the list. Folding a list of types into a type, given also the type of the result, is trivial:
 
--- -- Here `ListOfBoolOrℕ′` does not do any pattern matching itself and instead immediately returns `List (BoolOrℕ b)` with pattern matching performed in `BoolOrℕ b`. There's still pattern matching on `b` and the fact that it's inside another function call in the body of `ListOfBoolOrℕ′` does not change anything as we've discussed previously. Yet `id` defined over such lists:
+-- ```agda
+--   ToFun : List Set -> Set -> Set
+--   ToFun  []      B = B
+--   ToFun (A ∷ As) B = A -> ToFun As B
+-- ```
 
--- -- ```agda
--- --   idListOfBoolOrℕ′ : {b : Bool} -> ListOfBoolOrℕ′ b -> ListOfBoolOrℕ′ b
--- --   idListOfBoolOrℕ′ xs = xs
--- -- ```
+-- This allows us to compute the n-ary type of the function. In order to compute the n-ary type of the result we need to map the list of types with `λ A -> Vec A m` and turn `B` (the type of the resulting of the zipping function) into `Vec B m` (the type of the final result):
 
--- -- does not require the user to provide `b` explicitly, i.e. the following type checks just fine:
+-- ```agda
+--   ToVecFun : List Set -> Set -> ℕ -> Set
+--   ToVecFun As B m = ToFun (List.map (λ A -> Vec A m) As) (Vec B m)
+-- ```
 
--- -- ```agda
--- --   _ = idListOfBoolOrℕ′ (1 ∷ 2 ∷ 3 ∷ [])
--- -- ```
+-- It only remains to recurse on the list of types in an auxiliary function (n-ary `(<*>)`, in Haskell jargon) and define `zipWithN` in terms of that function:
 
--- -- This works as follows: the expected type of an argument (`ListOfBoolOrℕ′ _b`) gets unified with the actual one (`List ℕ`):
+-- ```agda
+--   apN : ∀ {As B m} -> Vec (ToFun As B) m -> ToVecFun As B m
+--   apN {[]}     ys = ys
+--   apN {A ∷ As} fs = λ xs -> apN {As} (fs ⊛ xs)
 
--- --       ListOfBoolOrℕ′ _b =?= List ℕ
+--   zipWithN : ∀ {As B m} -> ToFun As B -> ToVecFun As B m
+--   zipWithN f = apN (Vec.replicate f)
+-- ```
 
--- -- after expanding `ListOfBoolOrℕ′` we get
+-- Some tests verifying that the function does what it's supposed to:
 
--- --       List (BoolOrℕ _b) =?= List ℕ
+-- ```agda
+--   _ : zipWithN 1 ≡ (1 ∷ᵥ 1 ∷ᵥ 1 ∷ᵥ []ᵥ)
+--   _ = refl
 
--- -- as usual `List` gets stripped from both the sides of the equation:
+--   _ : zipWithN suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ (2 ∷ᵥ 3 ∷ᵥ 4 ∷ᵥ []ᵥ)
+--   _ = refl
 
--- --       BoolOrℕ _b =?= ℕ
+--   _ : zipWithN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
+--   _ = refl
+-- ```
 
--- -- and here Agda has a special rule, quoting the wiki:
+-- Note how we do not provide the list of types explicitly in any of these cases, even though there's pattern matching on that list.
 
--- -- > If all right hand sides of a function definition have distinct (type or value) constructor heads, we can deduce the shape of the arguments to the function by looking at the head of the expected result.
+-- Your first guess is probably that Agda can infer the list of types from the type of the function passed to `zipWithN`. I.e. the type of `_+_` is `ℕ -> ℕ -> ℕ` and so it corresponds to `Fun (ℕ ∷ ℕ ∷ []) ℕ`. But that is not really clear to Agda as this snippet:
 
--- -- In our case two "constructor heads" in the definition of `BoolOrℕ` are `Bool` and `ℕ`, which are distinct, and that makes Agda see that `BoolOrℕ` is injective, so unifying `BoolOrℕ _b` with `ℕ` amounts to finding the clause where `ℕ` is returted from `BoolOrℕ`, which is
+-- ```agda
+--   _ : ToFun _ _ ≡ (ℕ -> ℕ -> ℕ)
+--   _ = refl
+-- ```
 
--- --       BoolOrℕ true  = ℕ
+-- gives yellow. And this is for a good reason, there are three ways to compute `ℕ -> ℕ -> ℕ` with `ToFun`:
 
--- -- and this determines that for the result to be `ℕ` the value of `_b` must be `true`, so the unification problem gets solved as
+--       ToFun (ℕ ∷ ℕ ∷ [])  ℕ             -- The obvious one.
+--       ToFun (ℕ ∷ [])     (ℕ -> ℕ)       -- A sneaky one.
+--       ToFun []           (ℕ -> ℕ -> ℕ)  -- Another sneaky one.
 
--- --       _b := true
+-- So the `ToFun _As _B =?= ℕ -> ℕ -> ℕ` unification problem does not have a single solution and hence can't be solved by Agda.
 
--- -- `BoolOrℕ` differs from
+-- However Agda sees that `zipWithN _+_` is applied to two vectors and the result is also a vector and since in the type signature of `zipWithN`
 
--- --       ListOfBoolOrℕ : Bool -> Set
--- --       ListOfBoolOrℕ false = List Bool
--- --       ListOfBoolOrℕ true  = List ℕ
+--       zipWithN : ∀ {As B n} -> ToFun As B -> ToVecFun As B n
 
--- -- in that the latter definition has the same head in both the clauses (`List`) and so the heuristic doesn't apply. Even though Agda really could have figured out that `ListOfBoolOrℕ` is also injective. I.e. the fact that `ListOfBoolOrℕ` is not consdered invertible is more of an implementation detail than a theoretical limination.
+-- the types of the arguments and the result are computed from `ToVecFun As B n`, we have the following unification problem:
 
--- -- Here's an example of a theoretical limitation: a definition like
+--       ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
 
--- -- ```agda
--- --   BoolOrBool : Bool -> Set
--- --   BoolOrBool true  = Bool
--- --   BoolOrBool false = Bool
--- -- ```
+-- which Agda can immediately solve as
 
--- -- can't be inverted, because the result (`Bool` in both the cases) does not determine the argument (either `true` or `false`).
+--       _As := ℕ ∷ ℕ ∷ []
+--       _B  := ℕ
+--       _n  := m
 
--- -- #### Example 1: universe of types
+-- And indeed there's no yellow here:
 
--- -- There's a standard technique ([the universe pattern](https://groups.google.com/forum/#!msg/idris-lang/N9_pVqG8dO8/mHlNmyL6AwAJ)) that allows us to get ad hoc polymorphism (a.k.a. type classes) for a closed set of types in a dependently typed world.
+-- ```agda
+--   _ : ∀ {m} -> ToVecFun _ _ _ ≡ (Vec ℕ m -> Vec ℕ m -> Vec ℕ m)
+--   _ = refl
+-- ```
 
--- -- We introduce a universe of types, which is a data type containing tags for actual types:
+-- The reason for that is that `ToVecFun` does not return an arbitrary `B` in the `[]` case like `ToFun` -- `ToVecFun` always returns a `Vec` in the `[]` case, so resolving metas as
 
--- -- ```agda
--- --   data Uni : Set where
--- --     bool nat : Uni
--- --     list : Uni -> Uni
--- -- ```
+--       _As := ℕ ∷ []
+--       _B  := ℕ -> ℕ
+--       _n  := m
 
--- -- interpret those tags as types that they encode:
+-- is not possible as that would compute to `Vec ℕ m -> Vec (ℕ -> ℕ) m` rather than `Vec ℕ m -> Vec ℕ m -> Vec ℕ m`.
 
--- -- ```agda
--- --   ⟦_⟧ : Uni -> Set
--- --   ⟦ bool   ⟧ = Bool
--- --   ⟦ nat    ⟧ = ℕ
--- --   ⟦ list A ⟧ = List ⟦ A ⟧
--- -- ```
+-- Hence there's no ambiguity now and since `ToVecFun` also returns a `_->_` in the `_∷_` case, that function is constructor-headed (as `Vec` and `_->_` are two different type constructors) and Agda knows how to infer the list of types.
 
--- -- and then mimic the `Eq` type class for the types from this universe by directly defining equality functions:
+-- If we omit the resulting vector, we'll get yellow:
 
--- -- ```agda
--- --   _==Bool_ : Bool -> Bool -> Bool
--- --   true  ==Bool true  = true
--- --   false ==Bool false = true
--- --   _     ==Bool _     = false
+-- ```agda
+--   _ : zipWithN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+--   _ = refl
+-- ```
 
--- --   _==ℕ_ : ℕ -> ℕ -> Bool
--- --   zero  ==ℕ zero  = true
--- --   suc n ==ℕ suc m = n ==ℕ m
--- --   _     ==ℕ _     = false
+-- as a standlone
 
--- --   mutual
--- --     _==List_ : ∀ {A} -> List ⟦ A ⟧ -> List ⟦ A ⟧ -> Bool
--- --     []       ==List []       = true
--- --     (x ∷ xs) ==List (y ∷ ys) = (x == y) && (xs ==List ys)
--- --     _        ==List _        = false
+--       ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> _R
 
--- --     _==_ : ∀ {A} -> ⟦ A ⟧ -> ⟦ A ⟧ -> Bool
--- --     _==_ {nat   } x y = x ==ℕ    y
--- --     _==_ {bool  } x y = x ==Bool y
--- --     _==_ {list A} x y = x ==List y
--- -- ```
+-- is inherently ambiguous again and Agda would need to do some non-trivial proof search in order to realize that `_R` can't be an `_->_` because of what the other equation is:
 
--- -- `_==_` checks equality of two elements from any type from the universe.
+--       ToFun _As _B =?= ℕ -> ℕ -> ℕ
 
--- -- Note that `_==List_` is defined mutually with `_==_`, because elements of lists can be of any type from the universe, i.e. they can also be lists, hence the mutual recursion.
+-- However, by specifying `B` to something that is clearly different from `->`, we can turn `ToFun` (a constructor/argument-headed function) into a proper constructor-headed function. This type checks:
 
--- -- A few tests:
+-- ```agda
+--   _ : ToFun _ ℕ ≡ (ℕ -> ℕ -> ℕ)
+--   _ = refl
+-- ```
 
--- -- ```agda
--- --   -- Check equality of two equal elements of `ℕ`.
--- --   _ : (42 == 42) ≡ true
--- --   _ = refl
+-- And hence we can omit the resulting vector, if `B` is specified, because knowing `B` and the type of the zipping function is sufficient for inverting `ToFun` and inferring `As`:
 
--- --   -- Check equality of two non-equal elements of `List Bool`.
--- --   _ : ((true ∷ []) == (false ∷ [])) ≡ false
--- --   _ = refl
+-- ```agda
+--   _ : zipWithN {B = ℕ} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+--   _ = refl
+-- ```
 
--- --   -- Check equality of two equal elements of `List (List ℕ)`.
--- --   _ : (((4 ∷ 81 ∷ []) ∷ (57 ∷ 2 ∷ []) ∷ []) == ((4 ∷ 81 ∷ []) ∷ (57 ∷ 2 ∷ []) ∷ [])) ≡ true
--- --   _ = refl
+-- We don't need to invert `ToFun` when the _spine_ of `As` is provided explicitly:
 
--- --   -- Check equality of two non-equal elements of `List (List ℕ)`.
--- --   _ : (((4 ∷ 81 ∷ []) ∷ (57 ∷ 2 ∷ []) ∷ []) == ((4 ∷ 81 ∷ []) ∷ [])) ≡ false
--- --   _ = refl
--- -- ```
+-- ```agda
+--   _ : zipWithN {As = _ ∷ _ ∷ []} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+--   _ = refl
+-- ```
 
--- -- It's possible to leave `A` implicit in `_==_` and get it inferred in the tests above precisely because `⟦_⟧` is constructor-headed. If we had `bool₁` and `bool₂` tags both mapping to `Bool`, inference for `_==_` would not work for booleans, lists of booleans etc. In the version of Agda I'm using inference for naturals, lists of naturals etc still works though, if an additional `bool` is added to the universe, i.e. breaking constructor-headedness of a function for certain arguments does not result in inference being broken for others.
+-- as Agda only needs to know the spine of `As` and not the actual types stored in the list in order for `ToFun` to compute (since `ToFun` is defined by pattern matching on the spine of its argument and so the actual elements of the list are computationally irrelevant). `ToFun (_A₁ ∷ _A₂ ∷ []) _B` computes to `_A₁ -> _A₂ -> _B` and unifying that type with `ℕ -> ℕ -> ℕ` is a trivial task.
 
--- -- #### Example 2: `boolToℕ`
+-- Omitting an argument results in metas not being resolved:
 
--- -- Constructor-headed functions can also return values rather than types. For example this function:
+-- ```agda
+--   _ : zipWithN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) _ ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
+--   _ = refl
+-- ```
 
--- -- ```agda
--- --   boolToℕ : Bool -> ℕ
--- --   boolToℕ false = zero
--- --   boolToℕ true  = suc zero
--- -- ```
+-- This is something that I can't explain, I'm unable to spot any problem with solving
 
--- -- is constructor-headed, because in the two clauses heads are constructors and they're different (`zero` vs `suc`).
+--       ToVecFun _As _B _n ≡ (Vec ℕ m -> _ -> Vec ℕ m)
 
--- -- So if we define a version of `id` that takes a `Vec` with either 0 or 1 element:
+-- with
 
--- -- ```agda
--- --   idVecAsMaybe : ∀ {b} -> Vec ℕ (boolToℕ b) -> Vec ℕ (boolToℕ b)
--- --   idVecAsMaybe xs = xs
--- -- ```
+--       _As := Vec ℕ m ∷ Vec ℕ m ∷ []
+--       _B  := Vec ℕ m
+--       _n  := m
 
--- -- then it won't be necessary to specify `b`:
+-- And specifying `B` doesn't help in this case:
 
--- -- ```agda
--- --   _ = idVecAsMaybe []ᵥ
--- --   _ = idVecAsMaybe (0 ∷ᵥ []ᵥ)
--- -- ```
+-- ```agda
+--   _ : zipWithN {B = ℕ} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) _ ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
+--   _ = refl
+-- ```
 
--- -- as Agda knows how to solve `boolToℕ _b =?= zero` or `boolToℕ _b =?= suc zero` due to `boolToℕ` being invertible.
+-- Finally that constructor-headedness is compositional. The
 
--- -- `idVecAsMaybe` supplied with a vector of length greater than `1` correctly gives an error (as opposed to merely reporting that there's an unsolved meta):
+--       ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
 
--- --       -- suc _n_624 != zero of type ℕ
--- --       _ = idVecAsMaybe (0 ∷ᵥ 1 ∷ᵥ []ᵥ)
+-- problem expands to
 
--- -- Note that `boolToℕ` defined like that:
+--       ToFun (List.map (λ A -> Vec A m) _As) (Vec _B _n) =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
 
--- -- ```agda
--- --   boolToℕ′ : Bool -> ℕ
--- --   boolToℕ′ false = zero + zero
--- --   boolToℕ′ true  = suc zero
--- -- ```
+-- Agda sees that the RHS was computed from the `_∷_` case of `ToFun`, but the actual argument of `ToFun` is not a meta or a `_∷_` already, it's a `List.map (λ A -> Vec A m) _As` and so Agda needs to invert `List.map` for unification to proceed. Which is no problem, since `List.map` is also constructor-headed.
 
--- -- is not considered to be constructor-headed, because Agda does not attempt to unfold recursive definitions in the RHS of a clause of a function. With this definition the second test in
+-- ## Eta-rules
 
--- -- ```agda
--- --   idVecAsMaybe′ : ∀ {b} -> Vec ℕ (boolToℕ′ b) -> Vec ℕ (boolToℕ′ b)
--- --   idVecAsMaybe′ xs = xs
+-- ```agda
+-- module EtaRules where
+-- ```
 
--- --   _ = idVecAsMaybe′ []ᵥ
--- --   _ = idVecAsMaybe′ (0 ∷ᵥ []ᵥ)
--- -- ```
+-- Agda implements eta-rules for [negative types](https://ncatlab.org/nlab/show/negative+type).
 
--- -- is yellow. But not the first one. I guess with `idVecAsMaybe′ []ᵥ` Agda tries to unify `zero` (the actual length of the vector) with both the RHSes of `boolToℕ′` and since `zero` is definitely not equal to `suc zero`, only the `zero + zero` case remains, so Agda finally decides to reduce that expression to find out that it indeed equals to `zero`.
+-- One such rule is that a function is definitionally equal to its eta-expanded version:
 
--- -- ### Constructor/argument-headed functions
+-- ```agda
+--   _ : ∀ {A : Set} {B : A -> Set} -> (f : ∀ x -> B x) -> f ≡ (λ x -> f x)
+--   _ = λ f -> refl
+-- ```
 
--- -- ```agda
--- -- module ConstructorArgumentHeadedFunctions where
--- --   open DataConstructors
--- -- ```
+-- Usefulness of this eta-rule is not something that one thinks of much, but that is only until they try to work in a language that doesn't support the rule (spoiler: it's a huge pain).
 
--- -- Recall that we've been using a weird definition of plus
+-- All records support eta-rules by default (that can be switched off for a single record via an explicit [`no-eta-equality`](https://agda.readthedocs.io/en/latest/language/record-types.html#eta-expansion) mark or for all records in a file via `{-# OPTIONS --no-eta-equality #-}` at the beginning of the file).
 
--- -- > because the usual one
--- -- >
--- -- >       _+_ : ℕ -> ℕ -> ℕ
--- -- >       zero  + m = m
--- -- >       suc n + m = suc (n + m)
--- -- >
--- -- > is subject to certain unification heuristics, which the weird one doesn't trigger.
+-- The simplest record is one with no fields:
 
--- -- The usual definition is this one:
+-- ```agda
+--   record Unit : Set where
+--     constructor unit
+-- ```
 
--- --       _+_ : ℕ -> ℕ -> ℕ
--- --       zero  + m = m
--- --       suc n + m = suc (n + m)
+-- The eta-rule for `Unit` is "all terms of type `Unit` are _definitionally_ equal to `unit`":
 
--- -- As you can see here we return one of the arguments in the first clause and the second clause is constructor-headed. Just like for regular constructor-headed function, Agda has enhanced inference for functions of this kind as well.
+-- ```agda
+--   _ : (u : Unit) -> u ≡ unit
+--   _ = λ u -> refl
+-- ```
 
--- -- Quoting the [changelog](https://github.com/agda/agda/blob/064095e14042bdf64c7d7c97c2869f63f5f1f8f6/doc/release-notes/2.5.4.md#pattern-matching):
+-- Consequently, since all terms of type `Unit` are equal to `unit`, they are also equal to each other:
 
--- -- > Improved constraint solving for pattern matching functions
--- -- > Constraint solving for functions where each right-hand side has a distinct rigid head has been extended to also cover the case where some clauses return an argument of the function. A typical example is append on lists:
--- -- >
--- -- >       _++_ : {A : Set} → List A → List A → List A
--- -- >       []       ++ ys = ys
--- -- >       (x ∷ xs) ++ ys = x ∷ (xs ++ ys)
--- -- >
--- -- > Agda can now solve constraints like `?X ++ ys == 1 ∷ ys` when `ys` is a neutral term.
+-- ```agda
+--   _ : (u1 u2 : Unit) -> u1 ≡ u2
+--   _ = λ u1 u2 -> refl
+-- ```
 
--- -- #### Example 1: back to `idᵥ⁺`
+-- Since Agda knows that any value of type `Unit` is in fact `unit`, Agda can infer the value of any implicit argument of type `Unit`. I.e. `A` and `{_ : Unit} -> A` are isomorphic for any `A`:
 
--- -- Now if we come back to this example:
+-- ```agda
+--   _ : {A : Set} -> A -> {_ : Unit} -> A
+--   _ = λ x -> x
 
--- -- <blockquote>
--- -- <p><code>idᵥ⁺</code> applied to a non-constant vector has essentially the same inference properties.</p>
--- -- <p>Without specializing the implicit arguments we get yellow:</p>
--- -- <pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-symbol">&#955;</span> <span class="agda2-highlight-bound-variable">n</span> <span class="agda2-highlight-bound-variable">m</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-bound-variable">xs</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-datatype">Vec</span> <span class="agda2-highlight-datatype">&#8469;</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-bound-variable">n</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-function">+&#8242;</span></span> <span class="agda2-highlight-bound-variable">m</span><span class="agda2-highlight-symbol">))</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-function"><span class="agda2-highlight-unsolved-meta">id&#7525;&#8314;</span></span> <span class="agda2-highlight-unsolved-constraint"><span class="agda2-highlight-unsolved-meta"><span class="agda2-highlight-bound-variable">xs</span></span></span>
--- -- </pre>
--- -- <p>Specializing <code>m</code> doesn't help, still yellow:</p>
--- -- <pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-symbol">&#955;</span> <span class="agda2-highlight-bound-variable">n</span> <span class="agda2-highlight-bound-variable">m</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-bound-variable">xs</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-datatype">Vec</span> <span class="agda2-highlight-datatype">&#8469;</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-bound-variable">n</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-function">+&#8242;</span></span> <span class="agda2-highlight-bound-variable">m</span><span class="agda2-highlight-symbol">))</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-function"><span class="agda2-highlight-unsolved-meta">id&#7525;&#8314;</span></span> <span class="agda2-highlight-symbol">{</span>m <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-bound-variable">m</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-unsolved-constraint"><span class="agda2-highlight-unsolved-meta"><span class="agda2-highlight-bound-variable">xs</span></span></span>
--- -- </pre>
--- -- </blockquote>
+--   _ : {A : Set} -> ({_ : Unit} -> A) -> A
+--   _ = λ x -> x
+-- ```
 
--- -- but define `idᵥ⁺` over `_+_` rather than `_+′_`:
+-- This eta-rule applies to `⊤` as well, precisely because `⊤` is defined as a record with no fields.
 
--- -- ```agda
--- --   idᵥ⁺ : ∀ {A n m} -> Vec A (n + m) -> Vec A (n + m)
--- --   idᵥ⁺ xs = xs
--- -- ```
+-- For a record with fields the eta-rule is "an element of the record is always the constructor of the record applied to its fields". For example:
 
--- -- then supplying only `m` explicitly:
+-- ```agda
+--   record Triple (A B C : Set) : Set where
+--     constructor triple
+--     field
+--       fst : A
+--       snd : B
+--       thd : C
+--   open Triple
 
--- -- ```agda
--- --   _ = λ n m (xs : Vec ℕ (n + m)) -> idᵥ⁺ {m = m} xs
--- -- ```
+--   _ : ∀ {A B C} -> (t : Triple A B C) -> t ≡ triple (fst t) (snd t) (thd t)
+--   _ = λ t -> refl
+-- ```
 
--- -- satisfies the type checker due to `_+_` being constructor/argument-headed.
+-- Correspondingly, since Agda knows that any value of type `Triple A B C` is `triple` applied to some argument, these two types are isomorphic:
 
--- -- And
+--       ∀ {x y z} -> D x y z
+--       {(triple x y z) : Triple A B C} -> D x y z
 
--- -- ```agda
--- --   _ = λ n m (xs : Vec ℕ (n + m)) -> idᵥ⁺ xs
--- -- ```
+-- for any `A`, `B`, `C`, `D` as witnessed by
 
--- -- still gives yellow, because it's still inherently ambiguous.
+-- ```agda
+--   _ : ∀ {A B C} {D : A -> B -> C -> Set} -> ({(triple x y z) : Triple A B C} -> D x y z) -> ∀ {x y z} -> D x y z
+--   _ = λ d -> d
 
--- -- Additionally, this now also type checks:
+--   _ : ∀ {A B C} {D : A -> B -> C -> Set} -> (∀ {x y z} -> D x y z) -> {(triple x y z) : Triple A B C} -> D x y z
+--   _ = λ d -> d
+-- ```
 
--- -- ```agda
--- --   _ = idᵥ⁺ {m = 0} (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
--- -- ```
+-- We'll consider the opportunities that this feature gives us a bit later.
 
--- -- This is because instantiating `m` at `0` in `idᵥ⁺` makes `_+_` constructor-headed, because if we inline `m` in the definition of `_+_`, we'll get:
+-- Supporting eta-equality for sum types is [possible in theory](https://ncatlab.org/nlab/show/sum+type#as_a_positive_type), but Agda does not implement that. Any `data` definition in Agda does not support eta-equality, including an empty `data` declaration like
 
--- --       _+0 : ℕ -> ℕ
--- --       zero  +0 = zero
--- --       suc n +0 = suc (n +0)
+-- ```agda
+--   data Empty : Set where
+-- ```
 
--- -- which is clearly constructor-headed.
+-- (which is always isomorphic to `Data.Empty.⊥` and is how `⊥` is defined in the first place).
 
--- -- And
+-- Eta-rules for records may seem not too exciting, but there are a few important use cases.
 
--- -- ```agda
--- --   _ = idᵥ⁺ {m = 1} (1 ∷ᵥ 2 ∷ᵥ []ᵥ)
--- -- ```
+-- ### Computing predicates: division
 
--- -- still does not type check, because inlining `m` as `1` does not make `_+_` constructor-headed:
+-- Consider the division function (defined by repeated subtraction in a slightly weird way to please the termination checker):
 
--- --       _+1 : ℕ -> ℕ
--- --       zero  +1 = suc zero
--- --       suc n +1 = suc (n +1)
+-- ```agda
+-- module Div-v1 where
+--   open import Data.List.Base as List
+--   open import Data.Maybe.Base
 
--- -- #### Example 2: polyvariadic `zipWith`: list-based
+--   -- This function divides its first argument by the successor of the second one via repeated
+--   -- subtraction.
+--   _`div-suc`_ : ℕ -> ℕ -> ℕ
+--   n `div-suc` m = go n m where
+--     go : ℕ -> ℕ -> ℕ
+--     go  0       m      = 0
+--     go (suc n)  0      = suc (go n m)
+--     go (suc n) (suc m) = go n m
 
--- -- ```agda
--- -- module PolyvariadicZipWith where
--- --   open import Data.List.Base as List
--- --   open import Data.Vec.Base as Vec renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
--- -- ```
+--   _`div`_ : ℕ -> ℕ -> Maybe ℕ
+--   n `div` 0     = nothing
+--   n `div` suc m = just (n `div-suc` m)
+-- ```
 
--- -- We can define this family of functions over vectors:
+-- An attempt to divide a natural number by `0` results in `nothing`, otherwise we get the quotient wrapped in `just`.
 
--- --       replicate : ∀ {m} → A → Vec A m
--- --       map : ∀ {m} → (A → B) → Vec A m → Vec B m
--- --       zipWith : ∀ {m} → (A → B → C) → Vec A m → Vec B m → Vec C m
--- --       zipWith3 : ∀ {m} → (A → B → C → D) → Vec A m → Vec B m → Vec C m → Vec D m
+-- We can check that all natural numbers up to `12` get divided by `3` correctly:
 
--- -- (the Agda stdlib provides all of those but the last one)
+-- ```agda
+--   _ : List.map (λ n -> n `div` 3) (0 ∷ 1 ∷ 2 ∷ 3 ∷ 4 ∷ 5 ∷ 6 ∷ 7 ∷ 8 ∷ 9 ∷ 10 ∷ 11 ∷ 12 ∷ [])
+--     ≡ List.map  just              (0 ∷ 0 ∷ 0 ∷ 1 ∷ 1 ∷ 1 ∷ 2 ∷ 2 ∷ 2 ∷ 3 ∷ 3  ∷ 3  ∷ 4  ∷ [])
+--   _ = refl
+-- ```
 
--- -- Can we define a generic function that covers all of the above? Its type signature should look like this:
+-- and that an attempt to divide any number by `0` will give us `nothing`:
 
--- --       (A₁ -> A₂ -> ... -> B) -> Vec A₁ m -> Vec A₂ m -> ... -> Vec B m
+-- ```agda
+--   _ : ∀ n -> n `div` 0 ≡ nothing
+--   _ = λ n -> refl
+-- ```
 
--- -- Yes: we can parameterize a function by a list of types and compute those n-ary types from the list. Folding a list of types into a type, given also the type of the result, is trivial:
+-- This all works as expected, however we can redefine the division function is a way that allows us to
 
--- -- ```agda
--- --   ToFun : List Set -> Set -> Set
--- --   ToFun  []      B = B
--- --   ToFun (A ∷ As) B = A -> ToFun As B
--- -- ```
+-- 1. not wrap the result in `Maybe`
+-- 2. easily recover the original definition
 
--- -- This allows us to compute the n-ary type of the function. In order to compute the n-ary type of the result we need to map the list of types with `λ A -> Vec A m` and turn `B` (the type of the resulting of the zipping function) into `Vec B m` (the type of the final result):
+-- Here's how:
 
--- -- ```agda
--- --   ToVecFun : List Set -> Set -> ℕ -> Set
--- --   ToVecFun As B m = ToFun (List.map (λ A -> Vec A m) As) (Vec B m)
--- -- ```
+-- ```agda
+-- module Div-v2 where
+--   open Div-v1 using (_`div-suc`_)
 
--- -- It only remains to recurse on the list of types in an auxiliary function (n-ary `(<*>)`, in Haskell jargon) and define `zipWithN` in terms of that function:
+--   open import Data.List.Base as List
+--   open import Data.Maybe.Base
 
--- -- ```agda
--- --   apN : ∀ {As B m} -> Vec (ToFun As B) m -> ToVecFun As B m
--- --   apN {[]}     ys = ys
--- --   apN {A ∷ As} fs = λ xs -> apN {As} (fs ⊛ xs)
+--   _≢0 : ℕ -> Set
+--   _≢0 0 = ⊥
+--   _≢0 _ = ⊤
 
--- --   zipWithN : ∀ {As B m} -> ToFun As B -> ToVecFun As B m
--- --   zipWithN f = apN (Vec.replicate f)
--- -- ```
+--   _`div`_ : ℕ -> ∀ m -> {m ≢0} -> ℕ
+--   _`div`_ n  0      {()}
+--   _`div`_ n (suc m)      = n `div-suc` m  -- The worker is the same as in the original version.
+-- ```
 
--- -- Some tests verifying that the function does what it's supposed to:
+-- Now instead of returning a `Maybe` we require the caller to provide a proof that the divisor is not zero. And the original definition can be recovered as
 
--- -- ```agda
--- --   _ : zipWithN 1 ≡ (1 ∷ᵥ 1 ∷ᵥ 1 ∷ᵥ []ᵥ)
--- --   _ = refl
+-- ```agda
+--   _`div-original`_ : ℕ -> ℕ -> Maybe ℕ
+--   n `div-original` 0     = nothing
+--   n `div-original` suc m = just (n `div` suc m)
+-- ```
 
--- --   _ : zipWithN suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ (2 ∷ᵥ 3 ∷ᵥ 4 ∷ᵥ []ᵥ)
--- --   _ = refl
+-- There exist a bunch of blogposts advocating a similar style of programming:
 
--- --   _ : zipWithN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
--- --   _ = refl
--- -- ```
+-- 1. [Parse, don't validate](https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/)
+-- 2. [Type Safety Back and Forth](https://www.parsonsmatt.org/2017/10/11/type_safety_back_and_forth.html)
+-- 3. [The golden rule of software quality](http://www.haskellforall.com/2020/07/the-golden-rule-of-software-quality.html)
 
--- -- Note how we do not provide the list of types explicitly in any of these cases, even though there's pattern matching on that list.
+-- However all those blogposts talk about introducing separate data types for expressing invariants, while what we do here instead is use the regular type of natural numbers and add an additional type-level predicate computing to `⊥` (a type, for which no value can be provided), if the divisor is zero, and `⊤` (a type with a single value) otherwise. I.e. the only way to provide a value of type `m ≢0` is to make this predicate compute to `⊤`, which requires `m` to be a `suc` of some natural number.
 
--- -- Your first guess is probably that Agda can infer the list of types from the type of the function passed to `zipWithN`. I.e. the type of `_+_` is `ℕ -> ℕ -> ℕ` and so it corresponds to `Fun (ℕ ∷ ℕ ∷ []) ℕ`. But that is not really clear to Agda as this snippet:
+-- What Agda makes nice is that we don't need to ask the caller to provide a proof explicitly when `m` is in [WHNF](https://wiki.haskell.org/Weak_head_normal_form) (i.e. `m` is either `zero` or `suc m'` for some `m'`, definitionally), which enables us to leave the `m ≢0` argument implicit. The reason for that is when the outermost constructor of `m` is known, we have two cases:
 
--- -- ```agda
--- --   _ : ToFun _ _ ≡ (ℕ -> ℕ -> ℕ)
--- --   _ = refl
--- -- ```
+-- 1. it's `zero`: `zero ≢0` reduces to `⊥` and no value of that type can be provided, hence there's no point in making that argument explicit as the user will have to reconsider what they're doing anyway
+-- 2. it's `suc`: `suc m' ≢0` reduces to `⊤` and due to the eta-rule of `⊤`, the value of `⊤` can be inferred automatically
 
--- -- gives yellow. And this is for a good reason, there are three ways to compute `ℕ -> ℕ -> ℕ` with `ToFun`:
+-- Let us now see how this works in practice. Here we divide all numbers up to `12` by `4`:
 
--- --       ToFun (ℕ ∷ ℕ ∷ [])  ℕ             -- The obvious one.
--- --       ToFun (ℕ ∷ [])     (ℕ -> ℕ)       -- A sneaky one.
--- --       ToFun []           (ℕ -> ℕ -> ℕ)  -- Another sneaky one.
+-- ```agda
+--   _ : List.map (λ n -> n `div` 4) (0 ∷ 1 ∷ 2 ∷ 3 ∷ 4 ∷ 5 ∷ 6 ∷ 7 ∷ 8 ∷ 9 ∷ 10 ∷ 11 ∷ 12 ∷ [])
+--     ≡                             (0 ∷ 0 ∷ 0 ∷ 0 ∷ 1 ∷ 1 ∷ 1 ∷ 1 ∷ 2 ∷ 2 ∷ 2  ∷ 2  ∷ 3  ∷ [])
+--   _ = refl
+-- ```
 
--- -- So the `ToFun _As _B =?= ℕ -> ℕ -> ℕ` unification problem does not have a single solution and hence can't be solved by Agda.
+-- Note how we don't need to provide any proof that the divisor is not equal to zero, Agda figures that out itself.
 
--- -- However Agda sees that `zipWithN _+_` is applied to two vectors and the result is also a vector and since in the type signature of `zipWithN`
+-- An attempt to divide a number by `0` gives us an unresolved metavariable of type `⊥` (note the yellow):
 
--- --       zipWithN : ∀ {As B n} -> ToFun As B -> ToVecFun As B n
+-- ```agda
+--   -- _1254 : ⊥
+--   _ : ∀ n -> n `div` 0 ≡ n `div` 0
+--   _ = λ n -> refl
+-- ```
 
--- -- the types of the arguments and the result are computed from `ToVecFun As B n`, we have the following unification problem:
+-- (if you're curious whether it's possible to throw an actual error instead of having an unresolved metavariable, then Agda does allow us to do that via [Reflection](https://agda.readthedocs.io/en/latest/language/reflection.html), see [this file](https://github.com/effectfully/random-stuff/blob/0857360c917a834a0473ab68fcf24c05960fc335/ThrowOnZero.agda))
 
--- --       ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
+-- So in short, the eta-rule of `⊤` allows for convenient APIs when there are computational properties involved and it's fine to force upon the caller to specify enough info to make the property compute. In the above cases we only required a single argument to be in WHNF, but in other cases it can be necessary to have multiple arguments in [canonical form](https://ncatlab.org/nlab/show/canonical+form) (see [this Stackoverflow question and answer](https://stackoverflow.com/questions/33270639/so-whats-the-point) for an example).
 
--- -- which Agda can immediately solve as
+-- If we attempt to call ``_`div`_`` with the divisor argument not being in WHNF, we'll get yellow:
 
--- --       _As := ℕ ∷ ℕ ∷ []
--- --       _B  := ℕ
--- --       _n  := m
+-- ```agda
+--   _ : ℕ -> ∀ m -> {m ≢0} -> ℕ
+--   _ = λ n m -> n `div` m
+-- ```
 
--- -- And indeed there's no yellow here:
+-- since it's not possible to infer the value of type `m ≢0` when the type is stuck and can't reduce to anything. Which is rather inconvenient as we now have to explicitly thread the divisor-not-equal-to-zero proof through every function that eventually defers to ``_`div`_``. See the next section for an alternative solution.
 
--- -- ```agda
--- --   _ : ∀ {m} -> ToVecFun _ _ _ ≡ (Vec ℕ m -> Vec ℕ m -> Vec ℕ m)
--- --   _ = refl
--- -- ```
+-- ### Bonus: singletons
 
--- -- The reason for that is that `ToVecFun` does not return an arbitrary `B` in the `[]` case like `ToFun` -- `ToVecFun` always returns a `Vec` in the `[]` case, so resolving metas as
+-- Instead of checking if a value satisfies a certain predicate, we can sometimes provide that value in a [correct by construction](http://wiki.c2.com/?CorrectByConstruction) manner. In the case of division we need to ensure that the divisor is not zero, so we could have a special type of non-zero natural numbers for that:
 
--- --       _As := ℕ ∷ []
--- --       _B  := ℕ -> ℕ
--- --       _n  := m
+-- ```agda
+--   data ℕ₁ : Set where
+--     suc₁ : ℕ -> ℕ₁
+-- ```
 
--- -- is not possible as that would compute to `Vec ℕ m -> Vec (ℕ -> ℕ) m` rather than `Vec ℕ m -> Vec ℕ m -> Vec ℕ m`.
+-- and define:
 
--- -- Hence there's no ambiguity now and since `ToVecFun` also returns a `_->_` in the `_∷_` case, that function is constructor-headed (as `Vec` and `_->_` are two different type constructors) and Agda knows how to infer the list of types.
+-- ```agda
+--   _`div₁`_ : ℕ -> ℕ₁ -> ℕ
+--   n `div₁` suc₁ m = n `div-suc` m
+-- ```
 
--- -- If we omit the resulting vector, we'll get yellow:
+-- This is essentially what the "Parse, don't validate" approach referenced earlier is about.
 
--- -- ```agda
--- --   _ : zipWithN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
--- --   _ = refl
--- -- ```
+-- However in a dependently typed language we don't actually need to create a bespoke data type for the purpose of ensuring that a value is an application of a certain constructor. Instead we can define a singleton type that allows us to promote any value to the type level:
 
--- -- as a standlone
+-- ```agda
+--   data Promote {A : Set} : A -> Set where
+--     promote : ∀ x -> Promote x
+-- ```
 
--- --       ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> _R
+-- (there's only one value of type `Promote x`: `promote x` -- hence why it's called a singleton).
 
--- -- is inherently ambiguous again and Agda would need to do some non-trivial proof search in order to realize that `_R` can't be an `_->_` because of what the other equation is:
+-- Now the useful thing about this type is that it allows us to promote an arbitrary value to the type level, in particular we can promote an application of `suc` to a type variable:
 
--- --       ToFun _As _B =?= ℕ -> ℕ -> ℕ
+-- ```agda
+--   _`divᵖ`_ : ∀ {m} -> ℕ -> Promote (suc m) -> ℕ
+--   n `divᵖ` promote (suc m) = n `div-suc` m
+-- ```
 
--- -- However, by specifying `B` to something that is clearly different from `->`, we can turn `ToFun` (a constructor/argument-headed function) into a proper constructor-headed function. This type checks:
+-- This ensures that the second argument is `promote` applied to a natural number and that natural number is of the `suc m` form for some `m`, which is exactly the invariant that we want to express. Note how Agda does not ask to handle a
 
--- -- ```agda
--- --   _ : ToFun _ ℕ ≡ (ℕ -> ℕ -> ℕ)
--- --   _ = refl
--- -- ```
+--       n `divᵖ` promote 0 = ?
 
--- -- And hence we can omit the resulting vector, if `B` is specified, because knowing `B` and the type of the zipping function is sufficient for inverting `ToFun` and inferring `As`:
+-- case, as it knows that this case cannot occur.
 
--- -- ```agda
--- --   _ : zipWithN {B = ℕ} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
--- --   _ = refl
--- -- ```
+-- We can check that the implicit `m` can be inferred without any problems:
 
--- -- We don't need to invert `ToFun` when the _spine_ of `As` is provided explicitly:
+-- ```agda
+--   _ : ∀ {m} -> ℕ -> Promote (suc m) -> ℕ
+--   _ = λ n m -> n `divᵖ` m
+-- ```
 
--- -- ```agda
--- --   _ : zipWithN {As = _ ∷ _ ∷ []} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
--- --   _ = refl
--- -- ```
+-- which clearly has to be the case as `m` is an argument to a data constructor (`suc`) and the application (`suc m`) is an argument to a type constructor (`Promote`) and type and data constructors are inference-friendly due to them being invertible as we discussed before.
 
--- -- as Agda only needs to know the spine of `As` and not the actual types stored in the list in order for `ToFun` to compute (since `ToFun` is defined by pattern matching on the spine of its argument and so the actual elements of the list are computationally irrelevant). `ToFun (_A₁ ∷ _A₂ ∷ []) _B` computes to `_A₁ -> _A₂ -> _B` and unifying that type with `ℕ -> ℕ -> ℕ` is a trivial task.
+-- A test:
 
--- -- Omitting an argument results in metas not being resolved:
+-- ```agda
+--   _ : List.map (λ n -> n `divᵖ` promote 4) (0 ∷ 1 ∷ 2 ∷ 3 ∷ 4 ∷ 5 ∷ 6 ∷ 7 ∷ 8 ∷ 9 ∷ 10 ∷ 11 ∷ 12 ∷ [])
+--     ≡                                      (0 ∷ 0 ∷ 0 ∷ 0 ∷ 1 ∷ 1 ∷ 1 ∷ 1 ∷ 2 ∷ 2 ∷ 2  ∷ 2  ∷ 3  ∷ [])
+--   _ = refl
+-- ```
 
--- -- ```agda
--- --   _ : zipWithN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) _ ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
--- --   _ = refl
--- -- ```
+-- An attempt to divide a number by `0` results in a readable type error (as opposed to an unsolved meta of type `⊥` as before):
 
--- -- This is something that I can't explain, I'm unable to spot any problem with solving
+--       -- zero !=< suc _m_1287 of type ℕ
+--       -- when checking that the expression promote 0 has type
+--       -- Promote (suc _m_1287)
+--       _ : ∀ n -> n `divᵖ` promote 0 ≡ n `divᵖ` promote 0
+--       _ = λ n -> refl
 
--- --       ToVecFun _As _B _n ≡ (Vec ℕ m -> _ -> Vec ℕ m)
+-- And we can of course provide a function that tries to parse a natural number as an application of `suc` and either fails (when the number is `0`) or returns a `Promote (suc m)` for some `m`:
 
--- -- with
+-- ```agda
+--   open import Data.Product
 
--- --       _As := Vec ℕ m ∷ Vec ℕ m ∷ []
--- --       _B  := Vec ℕ m
--- --       _n  := m
+--   parseNonZero : ℕ -> Maybe (∃ (Promote ∘ suc))
+--   parseNonZero  zero   = nothing
+--   parseNonZero (suc n) = just (n , promote _)
+-- ```
 
--- -- And specifying `B` doesn't help in this case:
+-- Finally, there's one more use case for `promote`. Let's say you have some statically known list of numbers
 
--- -- ```agda
--- --   _ : zipWithN {B = ℕ} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) _ ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
--- --   _ = refl
--- -- ```
+-- ```agda
+--   listOfNumbers : List ℕ
+--   listOfNumbers = 1 ∷ 2 ∷ 3 ∷ 4 ∷ []
+-- ```
 
--- -- Finally that constructor-headedness is compositional. The
+-- and you want to extract the second number from the list. Direct pattern matching does not work:
 
--- --       ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
+-- ```agda
+--   secondNumber-direct : ℕ
+--   secondNumber-direct with listOfNumbers
+--   ... | _ ∷ two ∷ _ = two
+-- ```
 
--- -- problem expands to
+-- Agda colors the matching line, 'cause it wants you to handle the `[]` and `_ ∷ []` cases as well. This is because internally a `with`-abstraction is translated to an auxiliary function and the actual pattern matching happens in this function, but at that point we've already generalized the specific list to a variable of type `List ℕ` and lost the information that the original list (that gets passed as an argument to the function) is of a particular spine.
 
--- --       ToFun (List.map (λ A -> Vec A m) _As) (Vec _B _n) =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
+-- But we can preserve the information that the list is of a particular spine by reflecting that spine at the type level via `Promote`:
 
--- -- Agda sees that the RHS was computed from the `_∷_` case of `ToFun`, but the actual argument of `ToFun` is not a meta or a `_∷_` already, it's a `List.map (λ A -> Vec A m) _As` and so Agda needs to invert `List.map` for unification to proceed. Which is no problem, since `List.map` is also constructor-headed.
+-- ```agda
+--   secondNumber : ℕ
+--   secondNumber with promote listOfNumbers
+--   ... | promote (_ ∷ two ∷ _) = two
+-- ```
 
--- -- ## Eta-rules
+-- which makes Agda accept the definition.
 
--- -- ```agda
--- -- module EtaRules where
--- -- ```
+-- ### Generating type-level data
 
--- -- Agda implements eta-rules for [negative types](https://ncatlab.org/nlab/show/negative+type).
+-- -- TODO: make two modules
 
--- -- One such rule is that a function is definitionally equal to its eta-expanded version:
+-- ```agda
+-- module PolyvariadicZipWithEta where
+--   open import Data.Vec.Base as Vec renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
+-- ```
 
--- -- ```agda
--- --   _ : ∀ {A : Set} {B : A -> Set} -> (f : ∀ x -> B x) -> f ≡ (λ x -> f x)
--- --   _ = λ f -> refl
--- -- ```
+-- #### Polyvariadic `zipWith`: a no go
 
--- -- Usefulness of this eta-rule is not something that one thinks of much, but that is only until they try to work in a language that doesn't support the rule (spoiler: it's a huge pain).
+-- Recall this reasoning from the `PolyvariadicZipWith` module:
 
--- -- All records support eta-rules by default (that can be switched off for a single record via an explicit [`no-eta-equality`](https://agda.readthedocs.io/en/latest/language/record-types.html#eta-expansion) mark or for all records in a file via `{-# OPTIONS --no-eta-equality #-}` at the beginning of the file).
+-- > We don't need `ToFun` to be invertible when the _spine_ of `As` is provided explicitly:
+-- >
+-- >       _ : zipWithN {As = _ ∷ _ ∷ []} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+-- >       _ = refl
+-- >
+-- > as Agda only needs to know the spine of `As` and not the actual types stored in the list in order for `ToFun` to compute (since `ToFun` is defined by pattern matching on the spine of its argument and so the actual elements of the list are computationally irrelevant). `ToFun (_A₁ ∷ _A₂ ∷ []) _B` computes to `_A₁ -> _A₂ -> _B` and unifying that type with `ℕ -> ℕ -> ℕ` is a trivial task.
 
--- -- The simplest record is one with no fields:
+-- Can we somehow make that more ergonomic and allow the user to specify the length of the list of types (i.e. just a number) instead of the spine of that list, which is awkward? One option is to still use a list of types, but provide a wrapper that receives a natural number and turns every `suc` into a `∀` binding a type. All types bound this way then get fed one by one to a continuation that assembles them in a list and once `zero` is reached the wrapper calls the original function and passes the collected list of types as an argument. This is what they do in the [Arity-Generic Datatype-Generic Programming](http://www.seas.upenn.edu/~sweirich/papers/aritygen.pdf) paper. However this approach is rather tedious as it introduces a level of indirection that makes it harder to prove things about n-ary functions defined this way (and generally handle them at the type level). It also doesn't play well with universe polymorphism, since in order to handle an n-ary function receiving arguments lying in different universes we need another data structure storing the level of each of the universes and making that structure also a list entails the necessity to provide another wrapper on top of the existing one, which is just a mess.
 
--- -- ```agda
--- --   record Unit : Set where
--- --     constructor unit
--- -- ```
+-- One idea that comes to mind is to store types in a vector rather than a list. A vector is indexed by its length, so if we explicitly provide the length of a vector, Agda will be able to infer its spine and we won't need to specify it explicitly, right? Not quite.
 
--- -- The eta-rule for `Unit` is "all terms of type `Unit` are _definitionally_ equal to `unit`":
+-- Having these definitions:
 
--- -- ```agda
--- --   _ : (u : Unit) -> u ≡ unit
--- --   _ = λ u -> refl
--- -- ```
+-- ```agda
+--   ToFunᵥ : ∀ {n} -> Vec Set n -> Set -> Set
+--   ToFunᵥ  []ᵥ      B = B
+--   ToFunᵥ (A ∷ᵥ As) B = A -> ToFunᵥ As B
 
--- -- Consequently, since all terms of type `Unit` are equal to `unit`, they are also equal to each other:
+--   idNᵥ : ∀ {B} n {As : Vec Set n} -> ToFunᵥ As B -> ToFunᵥ As B
+--   idNᵥ _ y = y
+-- ```
 
--- -- ```agda
--- --   _ : (u1 u2 : Unit) -> u1 ≡ u2
--- --   _ = λ u1 u2 -> refl
--- -- ```
+-- (`idNᵥ` receives an n-ary function and returns it back. `n` specifies how many arguments that function takes) we can check if `As` is inferrable in `idNᵥ`:
 
--- -- Since Agda knows that any value of type `Unit` is in fact `unit`, Agda can infer the value of any implicit argument of type `Unit`. I.e. `A` and `{_ : Unit} -> A` are isomorphic for any `A`:
+-- ```agda
+--   _ = idNᵥ 2 _+_
+-- ```
 
--- -- ```agda
--- --   _ : {A : Set} -> A -> {_ : Unit} -> A
--- --   _ = λ x -> x
+-- Nope, it's not. Even though we know that we've specified enough information to determine what `As` is, we see yellow nevertheless. But if the spine of `As` is provided explicitly, then everything type checks:
 
--- --   _ : {A : Set} -> ({_ : Unit} -> A) -> A
--- --   _ = λ x -> x
--- -- ```
+-- ```agda
+--   _ = idNᵥ 2 {_ ∷ᵥ _ ∷ᵥ []ᵥ} _+_
+-- ```
 
--- -- This eta-rule applies to `⊤` as well, precisely because `⊤` is defined as a record with no fields.
+-- "But `2` determines that spine!" -- well, yes, but Agda doesn't see that.
 
--- -- For a record with fields the eta-rule is "an element of the record is always the constructor of the record applied to its fields". For example:
+-- We can force Agda to infer the spine of the vector by using a constructor-headed function matching on the vector and returning its length. We then need to equate the result of that function with the actual length provided as the `n` argument. The function looks like this:
 
--- -- ```agda
--- --   record Triple (A B C : Set) : Set where
--- --     constructor triple
--- --     field
--- --       fst : A
--- --       snd : B
--- --       thd : C
--- --   open Triple
+-- ```agda
+--   length-deep : ∀ {n} -> Vec Set n -> ℕ
+--   length-deep  []ᵥ      = 0
+--   length-deep (_ ∷ᵥ xs) = suc (length-deep xs)
+-- ```
 
--- --   _ : ∀ {A B C} -> (t : Triple A B C) -> t ≡ triple (fst t) (snd t) (thd t)
--- --   _ = λ t -> refl
--- -- ```
+-- The idea is that since we know the length of the vector (by means of it being provided as an argument) and `length-deep` returns precisely that length, we can make Agda invert the constructor-headed `length-deep` (and thus infer the spine of the vector) by unifying the provided and the computed lengths. However that last unification part is tricky: in Haskell one can just use `~` (see [GHC User's Guide](https://downloads.haskell.org/~ghc/8.8.4/docs/html/users_guide/glasgow_exts.html#equality-constraints)) and that will force unification at the call site (or require the constraint to bubble up), but Agda doesn't seem to have an analogous primitive. We can cook it up from instance arguments though, but first here's an explicit version:
 
--- -- Correspondingly, since Agda knows that any value of type `Triple A B C` is `triple` applied to some argument, these two types are isomorphic:
+-- ```agda
+--   idNᵥₑ : ∀ {B} n {As : Vec Set n} -> length-deep As ≡ n -> ToFunᵥ As B -> ToFunᵥ As B
+--   idNᵥₑ _ _ y = y
+-- ```
 
--- --       ∀ {x y z} -> D x y z
--- --       {(triple x y z) : Triple A B C} -> D x y z
+-- `idNᵥₑ` does not use the equality proof that it asks for, but the caller has to provide a proof anyway and so `refl` provided as a proof will force unification of `length-deep As` and `n` as Agda has to check that those two terms are actually the same thing (as `refl` claims them to be). And this unification is the only thing we need to get `length-deep` inverted and thus the spine of `As` inferred. We can check that there's indeed no yellow now:
 
--- -- for any `A`, `B`, `C`, `D` as witnessed by
+-- ```agda
+--   _ = idNᵥₑ 2 refl _+_
+-- ```
 
--- -- ```agda
--- --   _ : ∀ {A B C} {D : A -> B -> C -> Set} -> ({(triple x y z) : Triple A B C} -> D x y z) -> ∀ {x y z} -> D x y z
--- --   _ = λ d -> d
+-- Of course providing `refl` manually is laborious and since it's the only constructor of `_≡_` we can ask Agda to come up with it automatically via instance arguments:
 
--- --   _ : ∀ {A B C} {D : A -> B -> C -> Set} -> (∀ {x y z} -> D x y z) -> {(triple x y z) : Triple A B C} -> D x y z
--- --   _ = λ d -> d
--- -- ```
+-- ```agda
+--   idNᵥᵢ : ∀ {B} n {As : Vec Set n} -> {{length-deep As ≡ n}} -> ToFunᵥ As B -> ToFunᵥ As B
+--   idNᵥᵢ _ y = y
+-- ```
 
--- -- We'll consider the opportunities that this feature gives us a bit later.
+-- It's nearly the same function as the previous one, but now Agda implicitly inserts `refl` instead of asking the user to insert it explicitly. A test:
 
--- -- Supporting eta-equality for sum types is [possible in theory](https://ncatlab.org/nlab/show/sum+type#as_a_positive_type), but Agda does not implement that. Any `data` definition in Agda does not support eta-equality, including an empty `data` declaration like
+-- ```agda
+--   _ = idNᵥᵢ 2 _+_
+-- ```
 
--- -- ```agda
--- --   data Empty : Set where
--- -- ```
+-- Summarizing, `Vec` is as inference-friendly as `List` (i.e. not very friendly) when it comes to n-ary operations (we could use the same equate-the-expected-length-with-the-provided-one trick for `List` as well). And it's also impossible to store types from different universes in a `Vec`.
 
--- -- (which is always isomorphic to `Data.Empty.⊥` and is how `⊥` is defined in the first place).
+-- But there's a better way to store types.
 
--- -- Eta-rules for records may seem not too exciting, but there are a few important use cases.
+-- #### Polyvariadic `zipWith`: eta-based
 
--- -- ### Computing predicates: division
+-- Here's an inference-friendly data structure:
 
--- -- Consider the division function (defined by repeated subtraction in a slightly weird way to please the termination checker):
+-- ```agda
+--   -- Same as `⊤`, but lives in `Set₁` rather than `Set`.
+--   record ⊤₁ : Set₁ where
+--     constructor tt₁
 
--- -- ```agda
--- -- module Div-v1 where
--- --   open import Data.List.Base as List
--- --   open import Data.Maybe.Base
+--   -- This function is constructor-headed.
+--   Sets : ℕ -> Set₁
+--   Sets  0      = ⊤₁
+--   Sets (suc n) = Set × Sets n
+-- ```
 
--- --   -- This function divides its first argument by the successor of the second one via repeated
--- --   -- subtraction.
--- --   _`div-suc`_ : ℕ -> ℕ -> ℕ
--- --   n `div-suc` m = go n m where
--- --     go : ℕ -> ℕ -> ℕ
--- --     go  0       m      = 0
--- --     go (suc n)  0      = suc (go n m)
--- --     go (suc n) (suc m) = go n m
+-- `Sets n` computes to the `n`-ary product of `Set`s, for example `Sets 3` reduces to `Set × Set × Set × ⊤₁`. I.e. `Sets n` is isomorphic to `Vec Set n`, but since the former computes to a bunch of products and Agda has eta-rules for those, inferring a whole `Sets n` value amounts only to inferring each particular type from that structure, which is not the case for `Vec Set n` as we've seen previously (we know that `n` does determine the spine of a `Vec`, but Agda does not attempt to infer that spine).
 
--- --   _`div`_ : ℕ -> ℕ -> Maybe ℕ
--- --   n `div` 0     = nothing
--- --   n `div` suc m = just (n `div-suc` m)
--- -- ```
+-- Here's a quick test that `Sets` does have better inference properties than `Vec`:
 
--- -- An attempt to divide a natural number by `0` results in `nothing`, otherwise we get the quotient wrapped in `just`.
+-- ```agda
+--   -- `n` can be inferred from `Sets n`, hence can be left it implicit.
+--   -- As before, this function is constructor/argument-headed.
+--   ToFun : ∀ {n} -> Sets n -> Set -> Set
+--   ToFun {0}      tt₁     B = B
+--   ToFun {suc n} (A , As) B = A -> ToFun As B
 
--- -- We can check that all natural numbers up to `12` get divided by `3` correctly:
+--   idN : ∀ {B} n {As : Sets n} -> ToFun As B -> ToFun As B
+--   idN _ y = y
 
--- -- ```agda
--- --   _ : List.map (λ n -> n `div` 3) (0 ∷ 1 ∷ 2 ∷ 3 ∷ 4 ∷ 5 ∷ 6 ∷ 7 ∷ 8 ∷ 9 ∷ 10 ∷ 11 ∷ 12 ∷ [])
--- --     ≡ List.map  just              (0 ∷ 0 ∷ 0 ∷ 1 ∷ 1 ∷ 1 ∷ 2 ∷ 2 ∷ 2 ∷ 3 ∷ 3  ∷ 3  ∷ 4  ∷ [])
--- --   _ = refl
--- -- ```
+--   _ = idN 2 _+_
+-- ```
 
--- -- and that an attempt to divide any number by `0` will give us `nothing`:
+-- Type checks perfectly.
 
--- -- ```agda
--- --   _ : ∀ n -> n `div` 0 ≡ nothing
--- --   _ = λ n -> refl
--- -- ```
+-- Now we can proceed to defining `Sets`-based polyvariadic `zipWith`. For that we'll neeed a way to map elements of a `Sets` with a function:
 
--- -- This all works as expected, however we can redefine the division function is a way that allows us to
+-- ```agda
+--   -- This function is constructor-headed as its `Vec`-based analogue.
+--   mapSets : ∀ {n} -> (Set -> Set) -> Sets n -> Sets n
+--   mapSets {0}     F  tt₁     = tt₁
+--   mapSets {suc n} F (A , As) = F A , mapSets F As
+-- ```
 
--- -- 1. not wrap the result in `Maybe`
--- -- 2. easily recover the original definition
+-- And the rest is the same as the previous version except `List` is replaced by `Sets n`:
 
--- -- Here's how:
+-- ```agda
+--   -- As before, even though this function delegates to `ToFun`, it's constructor-headed
+--   -- (as opposed to the constructor/argument-headed `ToFun`), because the `B` of `ToFun` gets
+--   -- instantiated with `Vec B m` and so the two clauses of `ToFun` become disjoint (because `Vec`
+--   -- and `->` are two different type constructors).
+--   ToVecFun : ∀ {n} -> Sets n -> Set -> ℕ -> Set
+--   ToVecFun As B m = ToFun (mapSets (λ A -> Vec A m) As) (Vec B m)
 
--- -- ```agda
--- -- module Div-v2 where
--- --   open Div-v1 using (_`div-suc`_)
+--   -- Here `Sets n` is implicit, so in order to infer `n` from it, Agda needs to be able to infer
+--   -- `As`. As before, it's not possible to infer `As` from the type of the argument, but is
+--   -- possible to infer it from the type of the result.
+--   apN : ∀ {n B m} {As : Sets n} -> Vec (ToFun As B) m -> ToVecFun As B m
+--   apN {0}     ys = ys
+--   apN {suc n} fs = λ xs -> apN (fs ⊛ xs)
 
--- --   open import Data.List.Base as List
--- --   open import Data.Maybe.Base
+--   zipWithN : ∀ n {B m} {As : Sets n} -> ToFun As B -> ToVecFun As B m
+--   zipWithN _ f = apN (Vec.replicate f)
+-- ```
 
--- --   _≢0 : ℕ -> Set
--- --   _≢0 0 = ⊥
--- --   _≢0 _ = ⊤
+-- Note that `n` is an explicit argument in `zipWithN`. Providing `n` explicitly is useful when `As` can't be inferred otherwise. We'll consider such cases, but first let's check that all previous tests still pass. No need to specify `n` when when all arguments and the result are explicitly provided (which makes it possible for Agda to invert `ToVecFun` and infer `As`, as before)
 
--- --   _`div`_ : ℕ -> ∀ m -> {m ≢0} -> ℕ
--- --   _`div`_ n  0      {()}
--- --   _`div`_ n (suc m)      = n `div-suc` m  -- The worker is the same as in the original version.
--- -- ```
+-- ```agda
+--   _ : zipWithN _ 1 ≡ (1 ∷ᵥ 1 ∷ᵥ 1 ∷ᵥ []ᵥ)
+--   _ = refl
 
--- -- Now instead of returning a `Maybe` we require the caller to provide a proof that the divisor is not zero. And the original definition can be recovered as
+--   _ : zipWithN _ suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ (2 ∷ᵥ 3 ∷ᵥ 4 ∷ᵥ []ᵥ)
+--   _ = refl
 
--- -- ```agda
--- --   _`div-original`_ : ℕ -> ℕ -> Maybe ℕ
--- --   n `div-original` 0     = nothing
--- --   n `div-original` suc m = just (n `div` suc m)
--- -- ```
+--   _ : zipWithN _ _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
+--   _ = refl
+-- ```
 
--- -- There exist a bunch of blogposts advocating a similar style of programming:
+-- No need to specify `n` when either `B` or the spine of `As` is specified (which makes it possible for Agda to invert `ToFun` and infer `As`, as before)
 
--- -- 1. [Parse, don't validate](https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/)
--- -- 2. [Type Safety Back and Forth](https://www.parsonsmatt.org/2017/10/11/type_safety_back_and_forth.html)
--- -- 3. [The golden rule of software quality](http://www.haskellforall.com/2020/07/the-golden-rule-of-software-quality.html)
+-- ```agda
+--   _ : zipWithN _ {B = ℕ} suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
+--   _ = refl
 
--- -- However all those blogposts talk about introducing separate data types for expressing invariants, while what we do here instead is use the regular type of natural numbers and add an additional type-level predicate computing to `⊥` (a type, for which no value can be provided), if the divisor is zero, and `⊤` (a type with a single value) otherwise. I.e. the only way to provide a value of type `m ≢0` is to make this predicate compute to `⊤`, which requires `m` to be a `suc` of some natural number.
+--   _ : zipWithN _ {As = _ , _ , tt₁} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+--   _ = refl
+-- ```
 
--- -- What Agda makes nice is that we don't need to ask the caller to provide a proof explicitly when `m` is in [WHNF](https://wiki.haskell.org/Weak_head_normal_form) (i.e. `m` is either `zero` or `suc m'` for some `m'`, definitionally), which enables us to leave the `m ≢0` argument implicit. The reason for that is when the outermost constructor of `m` is known, we have two cases:
+-- I.e. the `Sets`-based `zipWithN` is at least as good inference-wise as its `List`-based counterpart. But now we can also just specify the arity (`n`) of the zipping function without specifying `B` or the spine of `As` as the spine of `As` can be inferred from `n` due to `Sets` being defined by pattern matching on `n` and computing to an `n`-ary product (which is inference-friendly due to the eta-rule of `_×_`):
 
--- -- 1. it's `zero`: `zero ≢0` reduces to `⊥` and no value of that type can be provided, hence there's no point in making that argument explicit as the user will have to reconsider what they're doing anyway
--- -- 2. it's `suc`: `suc m' ≢0` reduces to `⊤` and due to the eta-rule of `⊤`, the value of `⊤` can be inferred automatically
+-- ```agda
+--   _ : zipWithN 1 suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
+--   _ = refl
 
--- -- Let us now see how this works in practice. Here we divide all numbers up to `12` by `4`:
+--   _ : zipWithN 2 _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+--   _ = refl
 
--- -- ```agda
--- --   _ : List.map (λ n -> n `div` 4) (0 ∷ 1 ∷ 2 ∷ 3 ∷ 4 ∷ 5 ∷ 6 ∷ 7 ∷ 8 ∷ 9 ∷ 10 ∷ 11 ∷ 12 ∷ [])
--- --     ≡                             (0 ∷ 0 ∷ 0 ∷ 0 ∷ 1 ∷ 1 ∷ 1 ∷ 1 ∷ 2 ∷ 2 ∷ 2  ∷ 2  ∷ 3  ∷ [])
--- --   _ = refl
--- -- ```
+--   _ : zipWithN 2 _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
+--   _ = refl
+-- ```
 
--- -- Note how we don't need to provide any proof that the divisor is not equal to zero, Agda figures that out itself.
+-- This approach generalizes to dependenty-typed functions as well as full universe polymorpism, see [this Stack Overflow question and answer](https://stackoverflow.com/q/29179508/3237465) for an elaborated example. And it's possible to write a general machinery that supports both non-dependent and dependent n-ary functions, see this [blog post](http://effectfully.blogspot.com/2016/04/generic-universe-polymorphic.html).
 
--- -- An attempt to divide a number by `0` gives us an unresolved metavariable of type `⊥` (note the yellow):
+-- ## Universe levels
 
--- -- ```agda
--- --   -- _1254 : ⊥
--- --   _ : ∀ n -> n `div` 0 ≡ n `div` 0
--- --   _ = λ n -> refl
--- -- ```
+-- ```agda
+-- module UniverseLevels where
+-- ```
 
--- -- (if you're curious whether it's possible to throw an actual error instead of having an unresolved metavariable, then Agda does allow us to do that via [Reflection](https://agda.readthedocs.io/en/latest/language/reflection.html), see [this file](https://github.com/effectfully/random-stuff/blob/0857360c917a834a0473ab68fcf24c05960fc335/ThrowOnZero.agda))
+-- There are a bunch of definitional equalities associated with universe levels. Without them universe polymorphism would be nearly unusable. Here are the equalities:
 
--- -- So in short, the eta-rule of `⊤` allows for convenient APIs when there are computational properties involved and it's fine to force upon the caller to specify enough info to make the property compute. In the above cases we only required a single argument to be in WHNF, but in other cases it can be necessary to have multiple arguments in [canonical form](https://ncatlab.org/nlab/show/canonical+form) (see [this Stackoverflow question and answer](https://stackoverflow.com/questions/33270639/so-whats-the-point) for an example).
+-- ```agda
+--   _ : ∀ {α} -> lzero ⊔ α ≡ α
+--   _ = refl
 
--- -- If we attempt to call ``_`div`_`` with the divisor argument not being in WHNF, we'll get yellow:
+--   _ : ∀ {α} -> α ⊔ α ≡ α
+--   _ = refl
 
--- -- ```agda
--- --   _ : ℕ -> ∀ m -> {m ≢0} -> ℕ
--- --   _ = λ n m -> n `div` m
--- -- ```
+--   _ : ∀ {α} -> lsuc α ⊔ α ≡ lsuc α
+--   _ = refl
 
--- -- since it's not possible to infer the value of type `m ≢0` when the type is stuck and can't reduce to anything. Which is rather inconvenient as we now have to explicitly thread the divisor-not-equal-to-zero proof through every function that eventually defers to ``_`div`_``. See the next section for an alternative solution.
+--   _ : ∀ {α β} -> α ⊔ β ≡ β ⊔ α
+--   _ = refl
 
--- -- ### Bonus: singletons
+--   _ : ∀ {α β γ} -> (α ⊔ β) ⊔ γ ≡ α ⊔ (β ⊔ γ)
+--   _ = refl
 
--- -- Instead of checking if a value satisfies a certain predicate, we can sometimes provide that value in a [correct by construction](http://wiki.c2.com/?CorrectByConstruction) manner. In the case of division we need to ensure that the divisor is not zero, so we could have a special type of non-zero natural numbers for that:
+--   _ : ∀ {α β} -> lsuc α ⊔ lsuc β ≡ lsuc (α ⊔ β)
+--   _ = refl
+-- ```
 
--- -- ```agda
--- --   data ℕ₁ : Set where
--- --     suc₁ : ℕ -> ℕ₁
--- -- ```
+-- A demonstration of how Agda can greatly simplify level expressions using the above identites:
 
--- -- and define:
+-- ```agda
+--   _ : ∀ {α β γ} -> lsuc α ⊔ (γ ⊔ lsuc (lsuc β)) ⊔ lzero ⊔ (β ⊔ γ) ≡ lsuc (α ⊔ lsuc β) ⊔ γ
+--   _ = refl
+-- ```
 
--- -- ```agda
--- --   _`div₁`_ : ℕ -> ℕ₁ -> ℕ
--- --   n `div₁` suc₁ m = n `div-suc` m
--- -- ```
+-- These special rules also give us the ability to define a less-than-or-equal-to relation on levels:
 
--- -- This is essentially what the "Parse, don't validate" approach referenced earlier is about.
+-- ```agda
+--   _≤ℓ_ : Level -> Level -> Set
+--   α ≤ℓ β = α ⊔ β ≡ β
+-- ```
 
--- -- However in a dependently typed language we don't actually need to create a bespoke data type for the purpose of ensuring that a value is an application of a certain constructor. Instead we can define a singleton type that allows us to promote any value to the type level:
+-- which in turn allows us to [emulate cumulativity of universes](http://effectfully.blogspot.com/2016/07/cumu.html) in Agda (although there is an experimental option [`--cumulativity`](https://agda.readthedocs.io/en/latest/language/cumulativity.html) that makes the universe hierarchy cumulative).
 
--- -- ```agda
--- --   data Promote {A : Set} : A -> Set where
--- --     promote : ∀ x -> Promote x
--- -- ```
+-- The list of equalities shown above is not exhaustive. E.g. if during type checking Agda comes up with the following constraint:
 
--- -- (there's only one value of type `Promote x`: `promote x` -- hence why it's called a singleton).
+--       α <= β <= α
 
--- -- Now the useful thing about this type is that it allows us to promote an arbitrary value to the type level, in particular we can promote an application of `suc` to a type variable:
+-- it gets solved as `α ≡ β`.
 
--- -- ```agda
--- --   _`divᵖ`_ : ∀ {m} -> ℕ -> Promote (suc m) -> ℕ
--- --   n `divᵖ` promote (suc m) = n `div-suc` m
--- -- ```
 
--- -- This ensures that the second argument is `promote` applied to a natural number and that natural number is of the `suc m` form for some `m`, which is exactly the invariant that we want to express. Note how Agda does not ask to handle a
 
--- --       n `divᵖ` promote 0 = ?
 
--- -- case, as it knows that this case cannot occur.
 
--- -- We can check that the implicit `m` can be inferred without any problems:
 
--- -- ```agda
--- --   _ : ∀ {m} -> ℕ -> Promote (suc m) -> ℕ
--- --   _ = λ n m -> n `divᵖ` m
--- -- ```
 
--- -- which clearly has to be the case as `m` is an argument to a data constructor (`suc`) and the application (`suc m`) is an argument to a type constructor (`Promote`) and type and data constructors are inference-friendly due to them being invertible as we discussed before.
 
--- -- A test:
+-- ## A function is not dependent enough
 
--- -- ```agda
--- --   _ : List.map (λ n -> n `divᵖ` promote 4) (0 ∷ 1 ∷ 2 ∷ 3 ∷ 4 ∷ 5 ∷ 6 ∷ 7 ∷ 8 ∷ 9 ∷ 10 ∷ 11 ∷ 12 ∷ [])
--- --     ≡                                      (0 ∷ 0 ∷ 0 ∷ 0 ∷ 1 ∷ 1 ∷ 1 ∷ 1 ∷ 2 ∷ 2 ∷ 2  ∷ 2  ∷ 3  ∷ [])
--- --   _ = refl
--- -- ```
+-- -- ᵏ′ : ∀ {α β} {A : Set α} {B : A -> Set β} -> (∀ {x} -> B x) -> ∀ x -> B x
+-- -- ᵏ′ y x = y
 
--- -- An attempt to divide a number by `0` results in a readable type error (as opposed to an unsolved meta of type `⊥` as before):
+-- and show that const applied to a dependent function gives a very particular type error and discuss the error
 
--- --       -- zero !=< suc _m_1287 of type ℕ
--- --       -- when checking that the expression promote 0 has type
--- --       -- Promote (suc _m_1287)
--- --       _ : ∀ n -> n `divᵖ` promote 0 ≡ n `divᵖ` promote 0
--- --       _ = λ n -> refl
+-- mention the Kipling paper
 
--- -- And we can of course provide a function that tries to parse a natural number as an application of `suc` and either fails (when the number is `0`) or returns a `Promote (suc m)` for some `m`:
+-- ## mention the Jigger
 
--- -- ```agda
--- --   open import Data.Product
+-- ## Talk about heterogeneous equality?
+-- Talk about heteroindexed/telescopic equality?
 
--- --   parseNonZero : ℕ -> Maybe (∃ (Promote ∘ suc))
--- --   parseNonZero  zero   = nothing
--- --   parseNonZero (suc n) = just (n , promote _)
--- -- ```
-
--- -- Finally, there's one more use case for `promote`. Let's say you have some statically known list of numbers
-
--- -- ```agda
--- --   listOfNumbers : List ℕ
--- --   listOfNumbers = 1 ∷ 2 ∷ 3 ∷ 4 ∷ []
--- -- ```
-
--- -- and you want to extract the second number from the list. Direct pattern matching does not work:
-
--- -- ```agda
--- --   secondNumber-direct : ℕ
--- --   secondNumber-direct with listOfNumbers
--- --   ... | _ ∷ two ∷ _ = two
--- -- ```
-
--- -- Agda colors the matching line, 'cause it wants you to handle the `[]` and `_ ∷ []` cases as well. This is because internally a `with`-abstraction is translated to an auxiliary function and the actual pattern matching happens in this function, but at that point we've already generalized the specific list to a variable of type `List ℕ` and lost the information that the original list (that gets passed as an argument to the function) is of a particular spine.
-
--- -- But we can preserve the information that the list is of a particular spine by reflecting that spine at the type level via `Promote`:
-
--- -- ```agda
--- --   secondNumber : ℕ
--- --   secondNumber with promote listOfNumbers
--- --   ... | promote (_ ∷ two ∷ _) = two
--- -- ```
-
--- -- which makes Agda accept the definition.
-
--- -- ### Generating type-level data
-
--- -- -- TODO: make two modules
-
--- -- ```agda
--- -- module PolyvariadicZipWithEta where
--- --   open import Data.Vec.Base as Vec renaming (_∷_ to _∷ᵥ_; [] to []ᵥ)
--- -- ```
-
--- -- #### Polyvariadic `zipWith`: a no go
-
--- -- Recall this reasoning from the `PolyvariadicZipWith` module:
-
--- -- > We don't need `ToFun` to be invertible when the _spine_ of `As` is provided explicitly:
--- -- >
--- -- >       _ : zipWithN {As = _ ∷ _ ∷ []} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
--- -- >       _ = refl
--- -- >
--- -- > as Agda only needs to know the spine of `As` and not the actual types stored in the list in order for `ToFun` to compute (since `ToFun` is defined by pattern matching on the spine of its argument and so the actual elements of the list are computationally irrelevant). `ToFun (_A₁ ∷ _A₂ ∷ []) _B` computes to `_A₁ -> _A₂ -> _B` and unifying that type with `ℕ -> ℕ -> ℕ` is a trivial task.
-
--- -- Can we somehow make that more ergonomic and allow the user to specify the length of the list of types (i.e. just a number) instead of the spine of that list, which is awkward? One option is to still use a list of types, but provide a wrapper that receives a natural number and turns every `suc` into a `∀` binding a type. All types bound this way then get fed one by one to a continuation that assembles them in a list and once `zero` is reached the wrapper calls the original function and passes the collected list of types as an argument. This is what they do in the [Arity-Generic Datatype-Generic Programming](http://www.seas.upenn.edu/~sweirich/papers/aritygen.pdf) paper. However this approach is rather tedious as it introduces a level of indirection that makes it harder to prove things about n-ary functions defined this way (and generally handle them at the type level). It also doesn't play well with universe polymorphism, since in order to handle an n-ary function receiving arguments lying in different universes we need another data structure storing the level of each of the universes and making that structure also a list entails the necessity to provide another wrapper on top of the existing one, which is just a mess.
-
--- -- One idea that comes to mind is to store types in a vector rather than a list. A vector is indexed by its length, so if we explicitly provide the length of a vector, Agda will be able to infer its spine and we won't need to specify it explicitly, right? Not quite.
-
--- -- Having these definitions:
-
--- -- ```agda
--- --   ToFunᵥ : ∀ {n} -> Vec Set n -> Set -> Set
--- --   ToFunᵥ  []ᵥ      B = B
--- --   ToFunᵥ (A ∷ᵥ As) B = A -> ToFunᵥ As B
-
--- --   idNᵥ : ∀ {B} n {As : Vec Set n} -> ToFunᵥ As B -> ToFunᵥ As B
--- --   idNᵥ _ y = y
--- -- ```
-
--- -- (`idNᵥ` receives an n-ary function and returns it back. `n` specifies how many arguments that function takes) we can check if `As` is inferrable in `idNᵥ`:
-
--- -- ```agda
--- --   _ = idNᵥ 2 _+_
--- -- ```
-
--- -- Nope, it's not. Even though we know that we've specified enough information to determine what `As` is, we see yellow nevertheless. But if the spine of `As` is provided explicitly, then everything type checks:
-
--- -- ```agda
--- --   _ = idNᵥ 2 {_ ∷ᵥ _ ∷ᵥ []ᵥ} _+_
--- -- ```
-
--- -- "But `2` determines that spine!" -- well, yes, but Agda doesn't see that.
-
--- -- We can force Agda to infer the spine of the vector by using a constructor-headed function matching on the vector and returning its length. We then need to equate the result of that function with the actual length provided as the `n` argument. The function looks like this:
-
--- -- ```agda
--- --   length-deep : ∀ {n} -> Vec Set n -> ℕ
--- --   length-deep  []ᵥ      = 0
--- --   length-deep (_ ∷ᵥ xs) = suc (length-deep xs)
--- -- ```
-
--- -- The idea is that since we know the length of the vector (by means of it being provided as an argument) and `length-deep` returns precisely that length, we can make Agda invert the constructor-headed `length-deep` (and thus infer the spine of the vector) by unifying the provided and the computed lengths. However that last unification part is tricky: in Haskell one can just use `~` (see [GHC User's Guide](https://downloads.haskell.org/~ghc/8.8.4/docs/html/users_guide/glasgow_exts.html#equality-constraints)) and that will force unification at the call site (or require the constraint to bubble up), but Agda doesn't seem to have an analogous primitive. We can cook it up from instance arguments though, but first here's an explicit version:
-
--- -- ```agda
--- --   idNᵥₑ : ∀ {B} n {As : Vec Set n} -> length-deep As ≡ n -> ToFunᵥ As B -> ToFunᵥ As B
--- --   idNᵥₑ _ _ y = y
--- -- ```
-
--- -- `idNᵥₑ` does not use the equality proof that it asks for, but the caller has to provide a proof anyway and so `refl` provided as a proof will force unification of `length-deep As` and `n` as Agda has to check that those two terms are actually the same thing (as `refl` claims them to be). And this unification is the only thing we need to get `length-deep` inverted and thus the spine of `As` inferred. We can check that there's indeed no yellow now:
-
--- -- ```agda
--- --   _ = idNᵥₑ 2 refl _+_
--- -- ```
-
--- -- Of course providing `refl` manually is laborious and since it's the only constructor of `_≡_` we can ask Agda to come up with it automatically via instance arguments:
-
--- -- ```agda
--- --   idNᵥᵢ : ∀ {B} n {As : Vec Set n} -> {{length-deep As ≡ n}} -> ToFunᵥ As B -> ToFunᵥ As B
--- --   idNᵥᵢ _ y = y
--- -- ```
-
--- -- It's nearly the same function as the previous one, but now Agda implicitly inserts `refl` instead of asking the user to insert it explicitly. A test:
-
--- -- ```agda
--- --   _ = idNᵥᵢ 2 _+_
--- -- ```
-
--- -- Summarizing, `Vec` is as inference-friendly as `List` (i.e. not very friendly) when it comes to n-ary operations (we could use the same equate-the-expected-length-with-the-provided-one trick for `List` as well). And it's also impossible to store types from different universes in a `Vec`.
-
--- -- But there's a better way to store types.
-
--- -- #### Polyvariadic `zipWith`: eta-based
-
--- -- Here's an inference-friendly data structure:
-
--- -- ```agda
--- --   -- Same as `⊤`, but lives in `Set₁` rather than `Set`.
--- --   record ⊤₁ : Set₁ where
--- --     constructor tt₁
-
--- --   -- This function is constructor-headed.
--- --   Sets : ℕ -> Set₁
--- --   Sets  0      = ⊤₁
--- --   Sets (suc n) = Set × Sets n
--- -- ```
-
--- -- `Sets n` computes to the `n`-ary product of `Set`s, for example `Sets 3` reduces to `Set × Set × Set × ⊤₁`. I.e. `Sets n` is isomorphic to `Vec Set n`, but since the former computes to a bunch of products and Agda has eta-rules for those, inferring a whole `Sets n` value amounts only to inferring each particular type from that structure, which is not the case for `Vec Set n` as we've seen previously (we know that `n` does determine the spine of a `Vec`, but Agda does not attempt to infer that spine).
-
--- -- Here's a quick test that `Sets` does have better inference properties than `Vec`:
-
--- -- ```agda
--- --   -- `n` can be inferred from `Sets n`, hence can be left it implicit.
--- --   -- As before, this function is constructor/argument-headed.
--- --   ToFun : ∀ {n} -> Sets n -> Set -> Set
--- --   ToFun {0}      tt₁     B = B
--- --   ToFun {suc n} (A , As) B = A -> ToFun As B
-
--- --   idN : ∀ {B} n {As : Sets n} -> ToFun As B -> ToFun As B
--- --   idN _ y = y
-
--- --   _ = idN 2 _+_
--- -- ```
-
--- -- Type checks perfectly.
-
--- -- Now we can proceed to defining `Sets`-based polyvariadic `zipWith`. For that we'll neeed a way to map elements of a `Sets` with a function:
-
--- -- ```agda
--- --   -- This function is constructor-headed as its `Vec`-based analogue.
--- --   mapSets : ∀ {n} -> (Set -> Set) -> Sets n -> Sets n
--- --   mapSets {0}     F  tt₁     = tt₁
--- --   mapSets {suc n} F (A , As) = F A , mapSets F As
--- -- ```
-
--- -- And the rest is the same as the previous version except `List` is replaced by `Sets n`:
-
--- -- ```agda
--- --   -- As before, even though this function delegates to `ToFun`, it's constructor-headed
--- --   -- (as opposed to the constructor/argument-headed `ToFun`), because the `B` of `ToFun` gets
--- --   -- instantiated with `Vec B m` and so the two clauses of `ToFun` become disjoint (because `Vec`
--- --   -- and `->` are two different type constructors).
--- --   ToVecFun : ∀ {n} -> Sets n -> Set -> ℕ -> Set
--- --   ToVecFun As B m = ToFun (mapSets (λ A -> Vec A m) As) (Vec B m)
-
--- --   -- Here `Sets n` is implicit, so in order to infer `n` from it, Agda needs to be able to infer
--- --   -- `As`. As before, it's not possible to infer `As` from the type of the argument, but is
--- --   -- possible to infer it from the type of the result.
--- --   apN : ∀ {n B m} {As : Sets n} -> Vec (ToFun As B) m -> ToVecFun As B m
--- --   apN {0}     ys = ys
--- --   apN {suc n} fs = λ xs -> apN (fs ⊛ xs)
-
--- --   zipWithN : ∀ n {B m} {As : Sets n} -> ToFun As B -> ToVecFun As B m
--- --   zipWithN _ f = apN (Vec.replicate f)
--- -- ```
-
--- -- Note that `n` is an explicit argument in `zipWithN`. Providing `n` explicitly is useful when `As` can't be inferred otherwise. We'll consider such cases, but first let's check that all previous tests still pass. No need to specify `n` when when all arguments and the result are explicitly provided (which makes it possible for Agda to invert `ToVecFun` and infer `As`, as before)
-
--- -- ```agda
--- --   _ : zipWithN _ 1 ≡ (1 ∷ᵥ 1 ∷ᵥ 1 ∷ᵥ []ᵥ)
--- --   _ = refl
-
--- --   _ : zipWithN _ suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ (2 ∷ᵥ 3 ∷ᵥ 4 ∷ᵥ []ᵥ)
--- --   _ = refl
-
--- --   _ : zipWithN _ _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
--- --   _ = refl
--- -- ```
-
--- -- No need to specify `n` when either `B` or the spine of `As` is specified (which makes it possible for Agda to invert `ToFun` and infer `As`, as before)
-
--- -- ```agda
--- --   _ : zipWithN _ {B = ℕ} suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
--- --   _ = refl
-
--- --   _ : zipWithN _ {As = _ , _ , tt₁} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
--- --   _ = refl
--- -- ```
-
--- -- I.e. the `Sets`-based `zipWithN` is at least as good inference-wise as its `List`-based counterpart. But now we can also just specify the arity (`n`) of the zipping function without specifying `B` or the spine of `As` as the spine of `As` can be inferred from `n` due to `Sets` being defined by pattern matching on `n` and computing to an `n`-ary product (which is inference-friendly due to the eta-rule of `_×_`):
-
--- -- ```agda
--- --   _ : zipWithN 1 suc (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) ≡ _
--- --   _ = refl
-
--- --   _ : zipWithN 2 _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
--- --   _ = refl
-
--- --   _ : zipWithN 2 _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ _
--- --   _ = refl
--- -- ```
-
--- -- This approach generalizes to dependenty-typed functions as well as full universe polymorpism, see [this Stack Overflow question and answer](https://stackoverflow.com/q/29179508/3237465) for an elaborated example. And it's possible to write a general machinery that supports both non-dependent and dependent n-ary functions, see this [blog post](http://effectfully.blogspot.com/2016/04/generic-universe-polymorphic.html).
-
--- -- ## Universe levels
-
--- -- ```agda
--- -- module UniverseLevels where
--- -- ```
-
--- -- There are a bunch of definitional equalities associated with universe levels. Without them universe polymorphism would be nearly unusable. Here are the equalities:
-
--- -- ```agda
--- --   _ : ∀ {α} -> lzero ⊔ α ≡ α
--- --   _ = refl
-
--- --   _ : ∀ {α} -> α ⊔ α ≡ α
--- --   _ = refl
-
--- --   _ : ∀ {α} -> lsuc α ⊔ α ≡ lsuc α
--- --   _ = refl
-
--- --   _ : ∀ {α β} -> α ⊔ β ≡ β ⊔ α
--- --   _ = refl
-
--- --   _ : ∀ {α β γ} -> (α ⊔ β) ⊔ γ ≡ α ⊔ (β ⊔ γ)
--- --   _ = refl
-
--- --   _ : ∀ {α β} -> lsuc α ⊔ lsuc β ≡ lsuc (α ⊔ β)
--- --   _ = refl
--- -- ```
-
--- -- A demonstration of how Agda can greatly simplify level expressions using the above identites:
-
--- -- ```agda
--- --   _ : ∀ {α β γ} -> lsuc α ⊔ (γ ⊔ lsuc (lsuc β)) ⊔ lzero ⊔ (β ⊔ γ) ≡ lsuc (α ⊔ lsuc β) ⊔ γ
--- --   _ = refl
--- -- ```
-
--- -- These special rules also give us the ability to define a less-than-or-equal-to relation on levels:
-
--- -- ```agda
--- --   _≤ℓ_ : Level -> Level -> Set
--- --   α ≤ℓ β = α ⊔ β ≡ β
--- -- ```
-
--- -- which in turn allows us to [emulate cumulativity of universes](http://effectfully.blogspot.com/2016/07/cumu.html) in Agda (although there is an experimental option [`--cumulativity`](https://agda.readthedocs.io/en/latest/language/cumulativity.html) that makes the universe hierarchy cumulative).
-
--- -- The list of equalities shown above is not exhaustive. E.g. if during type checking Agda comes up with the following constraint:
-
--- --       α <= β <= α
-
--- -- it gets solved as `α ≡ β`.
-
-
-
-
-
-
-
-
--- -- ## A function is not dependent enough
-
--- -- -- ᵏ′ : ∀ {α β} {A : Set α} {B : A -> Set β} -> (∀ {x} -> B x) -> ∀ x -> B x
--- -- -- ᵏ′ y x = y
-
--- -- and show that const applied to a dependent function gives a very particular type error and discuss the error
-
--- -- mention the Kipling paper
-
--- -- ## mention the Jigger
-
--- -- ## Talk about heterogeneous equality?
--- -- Talk about heteroindexed/telescopic equality?
-
--- -- ## Inferring functions?
+-- ## Inferring functions?
