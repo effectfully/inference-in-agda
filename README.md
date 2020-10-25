@@ -11,31 +11,28 @@ There are two ways to read this tutorial:
 
 **IMPORTANT**: reading `UnificationInAgda.lagda.md` without type checking the file beforehand is a non-option as making Agda color the code is important for understanding how things get type checked. Hence reading `UnificationInAgda.lagda.md` directly on GitHub is a non-option as well as GitHub's syntax highlighting is insufficient and the file has to actually be type checked.
 
-## Building the HTML
+## Contributing
 
-### Prerequisites
+Building the HTML is a bit of a PITA as it requires several tools to be installed and several commands to be executed. So if you're going to create a PR, don't bother updating the HTML file, I'll do that myself.
 
-1. install [`htmlize`](https://github.com/hniksic/emacs-htmlize) for `emacs`. For example via
+### Building the HTML
+
+#### Prerequisites
+
+1. install [`agda`](https://github.com/agda/agda) and its [standard library](https://github.com/agda/agda-stdlib)
+2. install [`htmlize`](https://github.com/hniksic/emacs-htmlize) for `emacs`. For example via `(use-package htmlize :ensure t)`
+3. install [`agda-html-to-md`](https://github.com/effectfully/agda-html-to-md)
+4. install [`pandoc`](https://pandoc.org/installing.html)
+5. add this to your `.emacs.d` file:
 
 ```elisp
-(use-package htmlize
-  :ensure t)
-```
-
-2. globally install [`agda-html-to-md`](https://github.com/effectfully/agda-html-to-md)
-
-3. globally install [`pandoc`](https://pandoc.org/installing.html)
-
-4. add this to your `.emacs.d` file:
-
-```
 (global-set-key (kbd "C-x a h") 'htmlize-buffer)
 (fset 'generate-unification-in-agda-html
   [?\C-x ?h ?\C-u ?\M-| ?a ?g ?d ?a ?- ?h ?t ?m ?l ?- ?t ?o ?- ?m ?d return ?\C-x ?h ?\M-| ?p ?a ?n ?d ?o ?c ?  ?- ?- ?t ?o ?c ?  ?- ?s ?  ?- ?o ?  ?U ?n ?i ?f ?i ?c ?a ?t ?i ?o ?n ?I ?n ?A ?g ?d ?a ?. ?h ?t ?m ?l return])
 (global-set-key (kbd "C-x a u") 'generate-unification-in-agda-html)
 ```
 
-### Generating the HTML
+#### Generating the HTML
 
 **IMPORTANT**: wait for each command to finish.
 
