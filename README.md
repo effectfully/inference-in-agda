@@ -2,6 +2,15 @@
 
 Please do not post this publicly anywhere just yet.
 
+## How to read
+
+There are two ways to read this tutorial:
+
+1. [click this link](https://htmlpreview.github.io/?https://github.com/effectfully/unification-in-agda/blob/master/UnificationInAgda.html) to read the rendered HTML. Simple and sufficient, if you only want to read and not play with the code or contribute
+2. if you do want to play with the code, then install Agda, clone the repo, open the `UnificationInAgda.lagda.md` file, type check it and only then read
+
+**IMPORTANT**: reading `UnificationInAgda.lagda.md` without type checking the file beforehand is a non-option as making Agda color the code is important for understanding how things get type checked. Hence reading `UnificationInAgda.lagda.md` directly on GitHub is a non-option as well as GitHub's syntax highlighting is insufficient and the file has to actually be type checked.
+
 ## Building the HTML
 
 ### Prerequisites
