@@ -11,17 +11,19 @@ Agda is a wonderful language and its unification engines are exemplary, practica
 - unification used for getting convenient and powerful pattern matching
 - unification used for inferring values of implicit arguments
 
-These are two completely distinct machineries. This tutorial covers only the latter, because the former is already elaborated in detail (and implemented) by Jesper Cockx: see his exceptionally well-writted [PhD thesis](https://jesper.sikanda.be/files/thesis-final-digital.pdf) -- it's an entire high-quality book. Section "3.6 Related work" of it shortly describes differences between the requirements for the two unifications engines.
+These are two completely distinct machineries. This tutorial covers only the latter for the moment being. I'll probably say a few words about the former once I forget how hard it is to write long technical texts.
 
 This tutorial primarily targets
 
 - users of Agda who want to understand how to write code to make more things inferrable
 - a general audience curious about dependent types and what can be done with them
-- people implementing powerful dependently typed languages (most of what is described here are tricks that I use in may day-to-day work (when it involves Agda) and I'd definitely want to see them available in languages that are yet to come)
+- people implementing powerful dependently typed languages and looking for features to support (most of what is described here are tricks that I use in may day-to-day work (when it involves Agda) and I'd definitely want to see them available in languages that are yet to come)
 
 Higher-order unification is not covered. It's a highly advanced topic and from the user's perspective diving into higher-order unification has a rather big cost/benefit ratio: I don't remember tweaking my code to fit it into the pattern fragment or doing anything else of this kind to help Agda unify things in the higher-order case. Agda would barely be usable without the built-in higher-order unification, but it's mostly invisible to the user and just works.
 
 Analogously, no attempt to dissect Agda's internals is performed. Agda is well-designed enough not to force the user to worry about the peculiarities of the implementation (like when something gets postponed or in what order equations get solved). If you do want to learn about the internals, I recommend reading [Type checking in the presence of meta-variables](https://www.researchgate.net/publication/228571999_Type_checking_in_the_presence_of_meta-variables) and [Higher-Order Dynamic Pattern Unification for Dependent Types and Records](www.cse.chalmers.se/~abela/unif-sigma-long.pdf).
+
+And if you want to learn about internals of unification powering the pattern matching engine, then it's all elaborated in detail by Jesper Cockx in his [PhD thesis](https://jesper.sikanda.be/files/thesis-final-digital.pdf). Section "3.6 Related work" of it shortly describes differences between the requirements for the two kinds of unification.
 
 ## Intro
 
@@ -48,7 +50,7 @@ open import Data.Product using (_×_; Σ; _,_; _,′_)
 module BasicsOfTypeInference where
 ```
 
-Some preliminaries: the type of lists is defined as
+Some preliminaries: the type of lists is defined as (ignoring universe polymorphism)
 
 ```agda
   infixr 5 _∷_
@@ -146,7 +148,7 @@ but in Agda we can get away with a single additional postfix operator and constr
   -- Composing `suc` with 2-ary `_+_`
   _ = suc ∘ ∘ _+_
 
-  -- Composing `suc` with some random 3-ary function.
+  -- Composing `suc` with a random 3-ary function.
   _ = suc ∘ ∘ ∘ f where
     f = λ (x y z : ℕ) -> 0
 ```
@@ -181,7 +183,7 @@ In Agda bindings that are not marked with `abstract` are transparent, i.e. writi
   _ = t
 ```
 
-Unlike Haskell Agda does not have let-generalization, i.e. this valid Haskell code:
+Unlike Haskell Agda does not have [let-generalization](https://www.haskell.org/ghc/blog/20100930-LetGeneralisationInGhc7.html), i.e. this valid Haskell code:
 
 ```haskell
   p :: (Bool, Integer)
@@ -526,6 +528,8 @@ Here the inner `id` doesn't get instantiated and gets fed to the outer `id` as i
 
 (Except that definition does not type check, because `{A : Set} -> A -> A` is of type `Set₁` rather than `Set` and we don't bother fixing this with proper universe polymorphism as those details are irrelevant for explaining how implicits get inserted)
 
+Eager insertion of implicits is the reason why Agda infers the type of `[]` as `List _A_42`: `[]` gets elaborated to `[] {_}`, because the explicit argument `A` of `List` is implicit for the constructors of `List` (i.e. `[]` and `_∷_`) and that implicit gets eagerly inserted.
+
 There is a notorious bug related to insertion of implicit lambdas that has been in Agda for ages (even since its creation probably?) called The Hidden Lambda Bug. I'm not going to describe the bug here as details change across different version of Agda, but here are some links:
 
 - tracked in [this issue](https://github.com/agda/agda/issues/1079)
@@ -724,7 +728,7 @@ In general, an attempt to apply a higher-order function expecting a non-dependen
   falseOrZero false = 0
 ```
 
-we can trigger an error by trying to feed it to `_$′_` expecting a non-dependent function:
+we can trigger an error by trying to feed `falseOrZero` to `_$′_` (which expects a non-dependent function):
 
       -- Cannot instantiate the metavariable _401 to solution BoolOrℕ b
       -- since it contains the variable b
@@ -735,8 +739,8 @@ The exact error message depends on the version of Agda used, though.
 
 But note that
 
-1. this error can be triggered in different cases as well as we saw with `K₁ = K₀`
-2. applying a higher-order function to an unexpectedly dependent function can give a different error as we saw with `Kᵈ′′ (λ {α} -> Set α)`
+1. this error can be triggered in different cases as well, as we saw with `K₁ = K₀`
+2. applying a higher-order function to an unexpectedly dependent function can give a different error, as we saw with `Kᵈ′′ (λ {α} -> Set α)`
 
 Anyway, in my experience being able to make sense of that particular error is really helpful.
 
@@ -757,7 +761,7 @@ As we've seen previously the following code type checks fine:
 
 Here `A` is bound implicitly in `id`, but Agda is able to infer that in this case `A` should be instantiated to `Bool` and so Agda elaborates the expression to `id {Bool} true`.
 
-This is something that Haskell would infer as well. The programmer would hate to explicitly write out the type of every single argument, so programming languages often allow not to specify types when they can be inferred from the context. Agda is quite unique here however, because it can infer a lot more than other languages (even similar dependently typed ones) due to bespoke machineries handling various common patterns. But let's start with basics.
+This is something that Haskell would infer as well. The programmer would hate to explicitly write out the type of every single argument, so programming languages often allow the user not to specify types when they can be inferred from the context. Agda is quite unique here however, because it can infer a lot more than other languages (even similar dependently typed ones) due to bespoke machineries handling various common patterns. But let's start with basics.
 
 ## Arguments of data types
 
@@ -1938,7 +1942,7 @@ We don't need to invert `ToFun` when the _spine_ of `As` is provided explicitly:
 
 as Agda only needs to know the spine of `As` and not the actual types stored in the list in order for `ToFun` to compute (since `ToFun` is defined by pattern matching on the spine of its argument and so the actual elements of the list are computationally irrelevant). `ToFun (_A₁ ∷ _A₂ ∷ []) _B` computes to `_A₁ -> _A₂ -> _B` and unifying that type with `ℕ -> ℕ -> ℕ` is a trivial task.
 
-Omitting an argument results in metas not being resolved:
+Omitting an argument results in metas not being resolved in the version of Agda that I'm using:
 
 ```agda
   _ : zipWithN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) _ ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
@@ -2238,7 +2242,7 @@ A test:
   _ = refl
 ```
 
-An attempt to divide a number by `0` results in a readable type error (as opposed to an unsolved meta of type `⊥` as before):
+An attempt to divide a number by `0` results in a somewhat readable type error (as opposed to an unsolved meta of type `⊥` as before):
 
       -- zero !=< suc _m_1287 of type ℕ
       -- when checking that the expression promote 0 has type
@@ -2422,7 +2426,7 @@ And the rest is the same as the previous version except `List` is replaced by `S
   -- As before, even though this function delegates to `ToFun`, it's constructor-headed
   -- (as opposed to the constructor/argument-headed `ToFun`), because the `B` of `ToFun` gets
   -- instantiated with `Vec B m` and so the two clauses of `ToFun` become disjoint (because `Vec`
-  -- and `->` are two different type constructors).
+  -- and `->` are two distinct type constructors).
   ToVecFun : ∀ {n} -> Sets n -> Set -> ℕ -> Set
   ToVecFun As B m = ToFun (mapSets (λ A -> Vec A m) As) (Vec B m)
 
@@ -2533,22 +2537,4 @@ it gets solved as `α ≡ β`.
 
 
 
-## mention the Jigger
-
-## Talk about heterogeneous equality?
-Talk about heteroindexed/telescopic equality?
-
-## Inferring functions?
-
-##
-
-import Control.Monad.ST
-
---     • Couldn't match type ‘f0 Bool’ with ‘forall s. ST s Bool’
---       Expected type: f0 Bool -> Bool
---         Actual type: (forall s. ST s Bool) -> Bool
---     • In the second argument of ‘(.)’, namely ‘runST’
-test = not . runST $ pure True
-test = not $ runST $ pure True
-
-## talk about `id _ _ id` ?
+## mention the Jigger?
