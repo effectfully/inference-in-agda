@@ -107,10 +107,8 @@ Type inference works not only with lambdas binding implicit arguments, but also 
 
 is the regular `id` function spelled as
 
-```haskell
-  id :: forall a. a -> a
-  id x = x
-```
+      id :: forall a. a -> a
+      id x = x
 
 in Haskell.
 
@@ -185,10 +183,8 @@ In Agda bindings that are not marked with `abstract` are transparent, i.e. writi
 
 Unlike Haskell Agda does not have [let-generalization](https://www.haskell.org/ghc/blog/20100930-LetGeneralisationInGhc7.html), i.e. this valid Haskell code:
 
-```haskell
-  p :: (Bool, Integer)
-  p = let i x = x in (i True, i 1)
-```
+      p :: (Bool, Integer)
+      p = let i x = x in (i True, i 1)
 
 has to be written either with an explicit type signature for `i`:
 
@@ -211,16 +207,12 @@ So Agda infers polymorphic types neither on the top level nor locally.
 
 In Haskell types of bindings can be inferred from how those bindings are used later. E.g. the inferred type of a standalone
 
-```haskell
-  one = 1
-```
+      one = 1
 
 is `Integer` (see [monomorphism restriction](https://wiki.haskell.org/Monomorphism_restriction)), but in
 
-```haskell
-  one = 1
-  one' = one :: Word
-```
+      one = 1
+      one' = one :: Word
 
 the inferred type of `one` is `Word` rather than `Integer`.
 
@@ -334,11 +326,9 @@ Unrestricted pattern matching breaks type inference. Take for instance
 
 which is a direct counterpart of Haskell's
 
-```haskell
-  isZero = \case
-      0 -> True
-      _ -> False
-```
+      isZero = \case
+          0 -> True
+          _ -> False
 
 The latter is accepted by Haskell, but the former is not accepted by Agda: Agda colors the entire snippet in yellow meaning it's unable to resolve the generated metavariables. "What's the problem? The inferred type should be just `ℕ -> Bool`" -- you might think. Such a type works indeed:
 
@@ -549,16 +539,14 @@ module UnderspecifiedArgument where
 
 Another difference between Haskell and Agda is that Agda is not happy about ambiguous types that don't really affect anything. Consider a classic example: the `I` combinator can be defined in terms of the `S` and `K` combinators. In Haskell we can express that as
 
-```haskell
-k :: a -> b -> a
-k x y = x
+      k :: a -> b -> a
+      k x y = x
 
-s :: (a -> b -> c) -> (a -> b) -> a -> c
-s f g x = f x (g x)
+      s :: (a -> b -> c) -> (a -> b) -> a -> c
+      s f g x = f x (g x)
 
-i :: a -> a
-i = s k k
-```
+      i :: a -> a
+      i = s k k
 
 and [it'll type check](https://ideone.com/mZQM1f). However the Agda's equivalent
 
@@ -830,23 +818,19 @@ The implicit `A` gets inferred here: since all elements of a list have the same 
 
 In Haskell it's also the case that `a` is inferrable form a `[a]`: when the programmer writes
 
-```haskell
-  sort :: Ord a => [a] -> [a]
-```
+    `  sort :: Ord a => [a] -> [a]
 
 Haskell is always able to infer `a` from the given list (provided `a` is known at the call site: `sort []` is as meaningless in Haskell as it is in Agda) and thus figure out what the appropriate `Ord a` instance is. However, another difference between Haskell and Agda is that whenever Haskell sees that some implicit variables (i.e. those bound by `forall <list_of_vars> .`) can't be inferred in the general case, Haskell, unlike Agda, will complain. E.g. consider the following piece of code:
 
-```haskell
-  {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, TypeFamilies #-}
+      {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, TypeFamilies #-}
 
-  class C a b where
-    f :: a -> Int
+      class C a b where
+        f :: a -> Int
 
-  instance b ~ () => C Bool b where
-    f _ = 0
+      instance b ~ () => C Bool b where
+        f _ = 0
 
-  main = print $ f True
-```
+      main = print $ f True
 
 Even though at the call site (`f True`) `b` is determined via the `b ~ ()` constraint of the `C Bool b` instance and so there is no ambiguity, Haskell still complains about the definition of the `C` class itself:
 
@@ -1083,9 +1067,7 @@ Therefore, `F A` (where `F` is a bound variable) uniquely determines neither `F`
 
 A type application of a variable is injective in Haskell. I.e. unification of `f a` and `g b` (where `f` and `g` are type variables) forces unification of `a` and `b`, as well as unification of `f` and `g`. I.e. not only does `f a ⇉ a` hold for arbitrary type variable `f`, but also `f a ⇉ f`. This makes it possible to define functions like
 
-```haskell
-fmap :: Functor f => (a -> b) -> f a -> f b
-```
+      fmap :: Functor f => (a -> b) -> f a -> f b
 
 and use them without compulsively specifying `f` at the call site each time.
 
