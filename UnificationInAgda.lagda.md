@@ -85,7 +85,7 @@ You can make Agda infer the same type that Haskell infers by explicitly binding 
 
 (`_ = <...>` is an anonymous definition: we ask Agda to type check something, but don't bother giving it a name, because we're not going to use it later)
 
-This definition is accepted, which means that Agda inferred its type successfully.
+This definition is accepted, which means that Agda has inferred its type successfully.
 
 Note that
 
@@ -334,9 +334,11 @@ Unrestricted pattern matching breaks type inference. Take for instance
 
 which is a direct counterpart of Haskell's
 
-      isZero = \case
-          0 -> True
-          _ -> False
+```haskell
+  isZero = \case
+      0 -> True
+      _ -> False
+```
 
 The latter is accepted by Haskell, but the former is not accepted by Agda: Agda colors the entire snippet in yellow meaning it's unable to resolve the generated metavariables. "What's the problem? The inferred type should be just `ℕ -> Bool`" -- you might think. Such a type works indeed:
 
@@ -578,7 +580,7 @@ results in the last `K` being highlighted in yellow (which means that not all me
   _ = λ x -> K x (K x)
 ```
 
-It does. So the problem is that in the expression above the final `K x` argument is underspecified: a `K` must receive a particular `B`, but we neither explicitly specify a `B`, nor can it be inferred from the context as the entire `K x` argument is thrown away by the outer `K`.
+It does. So the problem is that in the expression above the final `K x` argument is underspecified: a `K` must receive a particular `B`, but we neither explicitly specify a `B`, nor it can be inferred from the context as the entire `K x` argument is thrown away by the outer `K`.
 
 To fix this we can explicitly specify a `B` (any of type `Set` will work, let's pick `ℕ`):
 
@@ -684,7 +686,7 @@ and ask for the type of the expression in the hole, we'll see
       Goal: A -> B -> A
       Have: ({B} -> A) -> B -> A
 
-and `A` and `{B} -> A` are two distinct types that fail to unify. While a bound variable of type `A` can be used where a `{B} -> A` is expected as Agda will realize that an implicit variable of type `B` can be simply ignored, and so this is why eta-expaning the definition solves the problem.
+and `A` and `{B} -> A` are two distinct types that fail to unify. While an expression of type `A` can be used wherever a `{B} -> A` is expected as Agda will realize that an implicit variable of type `B` can be simply ignored, and so this is why eta-expaning the definition solves the problem.
 
 Is `Kᵈ` the best we can do? Well, Agda has explicit universe polymorphism, so we can and should make the definition universe-polymorphic:
 
@@ -728,7 +730,7 @@ In general, an attempt to apply a higher-order function expecting a non-dependen
   falseOrZero false = 0
 ```
 
-we can trigger an error by trying to feed `falseOrZero` to `_$′_` (which expects a non-dependent function):
+we can trigger the error by trying to feed `falseOrZero` to `_$′_` (which expects a non-dependent function):
 
       -- Cannot instantiate the metavariable _401 to solution BoolOrℕ b
       -- since it contains the variable b
@@ -761,7 +763,7 @@ As we've seen previously the following code type checks fine:
 
 Here `A` is bound implicitly in `id`, but Agda is able to infer that in this case `A` should be instantiated to `Bool` and so Agda elaborates the expression to `id {Bool} true`.
 
-This is something that Haskell would infer as well. The programmer would hate to explicitly write out the type of every single argument, so programming languages often allow the user not to specify types when they can be inferred from the context. Agda is quite unique here however, because it can infer a lot more than other languages (even similar dependently typed ones) due to bespoke machineries handling various common patterns. But let's start with basics.
+This is something that Haskell would infer as well. The programmer would hate to explicitly write out the type of every single argument, so programming languages often allow the user not to specify types when they can be inferred from the context. Agda is quite unique here however, because it can infer a lot more than other languages (even similar dependently typed ones) due to bespoke machineries handling various common patterns. But let's start with the basics.
 
 ## Arguments of data types
 
@@ -828,19 +830,23 @@ The implicit `A` gets inferred here: since all elements of a list have the same 
 
 In Haskell it's also the case that `a` is inferrable form a `[a]`: when the programmer writes
 
-      sort :: Ord a => [a] -> [a]
+```haskell
+  sort :: Ord a => [a] -> [a]
+```
 
 Haskell is always able to infer `a` from the given list (provided `a` is known at the call site: `sort []` is as meaningless in Haskell as it is in Agda) and thus figure out what the appropriate `Ord a` instance is. However, another difference between Haskell and Agda is that whenever Haskell sees that some implicit variables (i.e. those bound by `forall <list_of_vars> .`) can't be inferred in the general case, Haskell, unlike Agda, will complain. E.g. consider the following piece of code:
 
-      {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, TypeFamilies #-}
+```haskell
+  {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, TypeFamilies #-}
 
-      class C a b where
-        f :: a -> Int
+  class C a b where
+    f :: a -> Int
 
-      instance b ~ () => C Bool b where
-        f _ = 0
+  instance b ~ () => C Bool b where
+    f _ = 0
 
-      main = print $ f True
+  main = print $ f True
+```
 
 Even though at the call site (`f True`) `b` is determined via the `b ~ ()` constraint of the `C Bool b` instance and so there is no ambiguity, Haskell still complains about the definition of the `C` class itself:
 
@@ -976,7 +982,7 @@ When the user writes
 2. the implicit `A` of `listId` elaborates to a metavariable `_A`
 3. `List _A` (what the instantiated `listId` expects as an argument) gets unified with `_LA` (the type of the actual argument)
 4. `List _A` (this time the type of the result that `listId` returns) also gets unified with the expected type, which is `ℕ -> ℕ`, because `suc` prepended to the result of the `listId` application is of this type
-5. we get the following unification problem consisting of two equations:
+5. we get a unification problem consisting of two equations:
 
          List _A =?= _LA
          List _A =?= List (ℕ -> ℕ)
@@ -1071,7 +1077,7 @@ Even if you specify `A = ℕ`, `F` still can be either `List` or `λ _ -> List �
   _ = fId {List} (1 ∷ 2 ∷ [])
 ```
 
-Therefore, `F A` (where `F` is a type variable) uniquely determines neither `F` nor `A`, i.e. `F A !⇉ F , A`.
+Therefore, `F A` (where `F` is a bound variable) uniquely determines neither `F` nor `A`, i.e. `F A !⇉ F , A`.
 
 ### Comparison to Haskell
 
@@ -1126,7 +1132,7 @@ A simple test:
 
 Here we pass a one-element vector to `headᵥ` and Agda succesfully infers the implicit `n` of `headᵥ` to be `0` (i.e. no elements in the vector apart from the first one).
 
-During unification the implicit `n` gets instantiated to a metavariable, say, `_n` and `suc _n` (the expected length of the vector) gets unified with `suc zero` (i.e. 1, the actual length of the vector), which amounts to unifying `_n` with `zero`, which immediately results in `n := zero`.
+During unification the implicit `n` gets instantiated to a metavariable, say, `_n`, and `suc _n` (the expected length of the vector) gets unified with `suc zero` (i.e. 1, the actual length of the vector), which amounts to unifying `_n` with `zero`, which immediately results in `n := zero`.
 
 Instead of having a constant vector, we can have a vector of an unspecified length and infer that length by providing `n` to `headᵥ` explicitly, as in
 
@@ -1197,7 +1203,7 @@ Agda looks under lambdas when reducing an expression, so for example `λ n -> 1 
   _ = refl
 ```
 
-Note also that Agda does not look under pattern matching lambdas, so for example these two functions
+But Agda does not look under pattern matching lambdas, so for example these two functions
 
       λ{ zero -> zero; (suc n) -> 1 + n }
       λ{ zero -> zero; (suc n) -> suc n }
@@ -1278,7 +1284,7 @@ Agda can't resolve `_n`. This is because `_+′_` is defined by pattern matching
 
       n +′ 1 =?= 2
 
-unification problem, Agda is not able to come up with it, because this would require arbitrary search in the general case and Agda's unification machinery carefully avoids any such strategies.
+unification problem, Agda is not able to come up with it, because this would require unbounded search in the general case and Agda's unification machinery carefully avoids any such strategies.
 
 ### A non-constant argument
 
@@ -1313,11 +1319,11 @@ So we have the following rule of thumb: whenever the type of function `h` mentio
 
       idᵥ⁺ : ∀ {A n m} -> Vec A (n +′ m) -> Vec A (n +′ m)
 
-and `_+′_` pattern matches on `n`, hence Agda won't be able to infer `n`, i.e. the user will have to provide and so it should be made explicit:
+and `_+′_` pattern matches on `n`, hence Agda won't be able to infer `n`, i.e. the user will have to provide it and so it should be made explicit:
 
       idᵥ⁺ : ∀ {A m} n -> Vec A (n +′ m) -> Vec A (n +′ m)
 
-At the same time `_+′_` doesn't match on its second argument, `m`, hence we leave it implicit.
+Since `_+′_` doesn't match on its second argument, `m`, we leave it implicit.
 
 #### Example 2: `_∸_`
 
@@ -1517,7 +1523,7 @@ Consider a definition of `ListOfBoolOrℕ` that is slightly different from the p
   ListOfBoolOrℕ′ b = List (BoolOrℕ b)
 ```
 
-Here `ListOfBoolOrℕ′` does not do any pattern matching itself and instead immediately returns `List (BoolOrℕ b)` with pattern matching performed in `BoolOrℕ b`. There's still pattern matching on `b` and the fact that it's inside another function call in the body of `ListOfBoolOrℕ′` does not change anything as we've discussed previously. Yet `id` defined over such lists:
+Here `ListOfBoolOrℕ′` does not do any pattern matching itself and instead immediately returns `List (BoolOrℕ b)` with pattern matching performed in `BoolOrℕ b`. There's still pattern matching on `b` and the fact that it's inside another function call in the body of `ListOfBoolOrℕ′` should not change anything as we've discussed previously. Yet `id` defined over such lists:
 
 ```agda
   idListOfBoolOrℕ′ : {b : Bool} -> ListOfBoolOrℕ′ b -> ListOfBoolOrℕ′ b
@@ -1560,7 +1566,7 @@ and this determines that for the result to be `ℕ` the value of `_b` must be `t
       ListOfBoolOrℕ false = List Bool
       ListOfBoolOrℕ true  = List ℕ
 
-in that the latter definition has the same head in both the clauses (`List`) and so the heuristic doesn't apply. Even though Agda really could have figured out that `ListOfBoolOrℕ` is also injective. I.e. the fact that `ListOfBoolOrℕ` is not consdered invertible is more of an implementation detail than a theoretical limination.
+in that the latter definition has the same head in both the clauses (`List`) and so the heuristic doesn't apply. Even though Agda really could have figured out that `ListOfBoolOrℕ` is also injective (the fact that `ListOfBoolOrℕ` is not consdered invertible is more of an implementation detail than a theoretical limination).
 
 Here's an example of a theoretical limitation: a definition like
 
@@ -1714,13 +1720,7 @@ Recall that we've been using a weird definition of plus
 >
 > is subject to certain unification heuristics, which the weird one doesn't trigger.
 
-The usual definition is this one:
-
-      _+_ : ℕ -> ℕ -> ℕ
-      zero  + m = m
-      suc n + m = suc (n + m)
-
-As you can see here we return one of the arguments in the first clause and the second clause is constructor-headed. Just like for regular constructor-headed function, Agda has enhanced inference for functions of this kind as well.
+As you can see in the usual definition we return one of the arguments in the first clause and the second clause starts with a constructor. Just like for regular constructor-headed functions, Agda has enhanced inference for functions of this kind as well.
 
 Quoting the [changelog](https://github.com/agda/agda/blob/064095e14042bdf64c7d7c97c2869f63f5f1f8f6/doc/release-notes/2.5.4.md#pattern-matching):
 
@@ -2275,7 +2275,7 @@ and you want to extract the second number from the list. Direct pattern matching
   ... | _ ∷ two ∷ _ = two
 ```
 
-Agda colors the matching line, 'cause it wants you to handle the `[]` and `_ ∷ []` cases as well. This is because internally a `with`-abstraction is translated to an auxiliary function and the actual pattern matching happens in this function, but at that point we've already generalized the specific list to a variable of type `List ℕ` and lost the information that the original list (that gets passed as an argument to the function) is of a particular spine.
+Agda colors the matching line, 'cause it wants you to handle the `[]` and `_ ∷ []` cases as well. This is because internally a `with`-abstraction is [translated to an auxiliary function](https://agda.readthedocs.io/en/v2.6.1/language/with-abstraction.html#helper-functions) and the actual pattern matching happens in this function, but at that point we've already generalized the specific list to a variable of type `List ℕ` and lost the information that the original list (that gets passed as an argument to the function) is of a particular spine.
 
 But we can preserve the information that the list is of a particular spine by reflecting that spine at the type level via `Promote`:
 
