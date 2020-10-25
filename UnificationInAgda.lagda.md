@@ -434,7 +434,7 @@ while this doesn't:
 
 In the latter case Agda treats `_` as being potentially dependent on `n`, since `n` is explicitly bound. And in the former case there can't be any dependency on a non-existing variable.
 
-## InferenceAndConstructors
+## Inference and constructors
 
 ```agda
 module InferenceAndConstructors where
@@ -896,14 +896,14 @@ By the way, if you do need to resolve things based on the current scope, then Ag
 
 does not result in unresolved metas.
 
-## Under the hood
+### Under the hood
 
 ```agda
 module UnderTheHood where
   open BasicsOfTypeInference
 ```
 
-### Example 1: `listId (1 ∷ 2 ∷ [])`
+#### Example 1: `listId (1 ∷ 2 ∷ [])`
 
 Returning to our `listId` example, when the user writes
 
@@ -923,7 +923,7 @@ here is what happens under the hood:
 
 And this is how Agda figures out that `A` gets instantiated by `ℕ`.
 
-### Example 2: `suc ∷ listId ((λ x -> x) ∷ [])`
+#### Example 2: `suc ∷ listId ((λ x -> x) ∷ [])`
 
 Similarly, when the user writes
 
@@ -954,7 +954,7 @@ Similarly, when the user writes
          _B := ℕ
          _A := ℕ -> ℕ
 
-### Example 3: `λ xs -> suc ∷ listId xs`
+#### Example 3: `λ xs -> suc ∷ listId xs`
 
 When the user writes
 

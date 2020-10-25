@@ -6,43 +6,6 @@
   <meta name="generator" content="pandoc" />
   <title></title>
   <style type="text/css">code{white-space: pre;}</style>
-  <style type="text/css">
-div.sourceCode { overflow-x: auto; }
-table.sourceCode, tr.sourceCode, td.lineNumbers, td.sourceCode {
-  margin: 0; padding: 0; vertical-align: baseline; border: none; }
-table.sourceCode { width: 100%; line-height: 100%; }
-td.lineNumbers { text-align: right; padding-right: 4px; padding-left: 4px; color: #aaaaaa; border-right: 1px solid #aaaaaa; }
-td.sourceCode { padding-left: 5px; }
-code > span.kw { color: #007020; font-weight: bold; } /* Keyword */
-code > span.dt { color: #902000; } /* DataType */
-code > span.dv { color: #40a070; } /* DecVal */
-code > span.bn { color: #40a070; } /* BaseN */
-code > span.fl { color: #40a070; } /* Float */
-code > span.ch { color: #4070a0; } /* Char */
-code > span.st { color: #4070a0; } /* String */
-code > span.co { color: #60a0b0; font-style: italic; } /* Comment */
-code > span.ot { color: #007020; } /* Other */
-code > span.al { color: #ff0000; font-weight: bold; } /* Alert */
-code > span.fu { color: #06287e; } /* Function */
-code > span.er { color: #ff0000; font-weight: bold; } /* Error */
-code > span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
-code > span.cn { color: #880000; } /* Constant */
-code > span.sc { color: #4070a0; } /* SpecialChar */
-code > span.vs { color: #4070a0; } /* VerbatimString */
-code > span.ss { color: #bb6688; } /* SpecialString */
-code > span.im { } /* Import */
-code > span.va { color: #19177c; } /* Variable */
-code > span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
-code > span.op { color: #666666; } /* Operator */
-code > span.bu { } /* BuiltIn */
-code > span.ex { } /* Extension */
-code > span.pp { color: #bc7a00; } /* Preprocessor */
-code > span.at { color: #7d9029; } /* Attribute */
-code > span.do { color: #ba2121; font-style: italic; } /* Documentation */
-code > span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
-code > span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
-code > span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
-  </style>
 </head>
 <body>
 <div id="TOC">
@@ -55,18 +18,14 @@ code > span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Inf
 <li><a href="#let-where-mutual"><code>let</code>, <code>where</code>, <code>mutual</code></a></li>
 <li><a href="#unification-intro">Unification intro</a></li>
 <li><a href="#inference-and-pattern-matching">Inference and pattern matching</a></li>
-<li><a href="#inferenceandconstructors">InferenceAndConstructors</a></li>
+<li><a href="#inference-and-constructors">Inference and constructors</a></li>
 <li><a href="#implicit-arguments">Implicit arguments</a></li>
 <li><a href="#an-underspecified-argument-example">An underspecified argument example</a></li>
 <li><a href="#not-dependent-enough">Not dependent enough</a></li>
 <li><a href="#inferring-implicits">Inferring implicits</a></li>
 <li><a href="#arguments-of-data-types">Arguments of data types</a><ul>
 <li><a href="#comparison-to-haskell">Comparison to Haskell</a></li>
-</ul></li>
-<li><a href="#under-the-hood">Under the hood</a><ul>
-<li><a href="#example-1-listid-1-2">Example 1: <code>listId (1 ∷ 2 ∷ [])</code></a></li>
-<li><a href="#example-2-suc-listid-λ-x---x">Example 2: <code>suc ∷ listId ((λ x -&gt; x) ∷ [])</code></a></li>
-<li><a href="#example-3-λ-xs---suc-listid-xs">Example 3: <code>λ xs -&gt; suc ∷ listId xs</code></a></li>
+<li><a href="#under-the-hood">Under the hood</a></li>
 </ul></li>
 <li><a href="#nicer-notation">Nicer notation</a></li>
 <li><a href="#type-functions">Type functions</a><ul>
@@ -261,8 +220,8 @@ code > span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Inf
 <pre>  <span class="agda2-highlight-function">id&#8321;</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-symbol">&#955;</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-bound-variable">A</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-primitive-type">Set</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-bound-variable">x</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-bound-variable">A</span><span class="agda2-highlight-symbol">)</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-bound-variable">x</span>
 </pre>
 <p>is the regular <code>id</code> function spelled as</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">  id ::</span> forall a<span class="fu">.</span> a <span class="ot">-&gt;</span> a
-  id x <span class="fu">=</span> x</code></pre></div>
+<pre><code>  id :: forall a. a -&gt; a
+  id x = x</code></pre>
 <p>in Haskell.</p>
 <p>Partially or fully applied <code>id₁</code> doesn't need a type signature either:</p>
 <pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-function">id&#8321;</span>
@@ -313,8 +272,8 @@ code > span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Inf
   <span class="agda2-highlight-symbol">_</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-function">t</span>
 </pre>
 <p>Unlike Haskell Agda does not have <a href="https://www.haskell.org/ghc/blog/20100930-LetGeneralisationInGhc7.html">let-generalization</a>, i.e. this valid Haskell code:</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">  p ::</span> (<span class="dt">Bool</span>, <span class="dt">Integer</span>)
-  p <span class="fu">=</span> <span class="kw">let</span> i x <span class="fu">=</span> x <span class="kw">in</span> (i <span class="dt">True</span>, i <span class="dv">1</span>)</code></pre></div>
+<pre><code>  p :: (Bool, Integer)
+  p = let i x = x in (i True, i 1)</code></pre>
 <p>has to be written either with an explicit type signature for <code>i</code>:</p>
 <pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-datatype">Bool</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-function">&#215;</span></span> <span class="agda2-highlight-datatype">&#8469;</span>
   <span class="agda2-highlight-symbol">_</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-keyword">let</span> <span class="agda2-highlight-bound-variable">i</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-bound-variable">A</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-primitive-type">Set</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-bound-variable">A</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-bound-variable">A</span>
@@ -328,10 +287,10 @@ code > span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Inf
 </pre>
 <p>So Agda infers polymorphic types neither on the top level nor locally.</p>
 <p>In Haskell types of bindings can be inferred from how those bindings are used later. E.g. the inferred type of a standalone</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">  one <span class="fu">=</span> <span class="dv">1</span></code></pre></div>
+<pre><code>  one = 1</code></pre>
 <p>is <code>Integer</code> (see <a href="https://wiki.haskell.org/Monomorphism_restriction">monomorphism restriction</a>), but in</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">  one <span class="fu">=</span> <span class="dv">1</span>
-  one&#39; <span class="fu">=</span><span class="ot"> one ::</span> <span class="dt">Word</span></code></pre></div>
+<pre><code>  one = 1
+  one&#39; = one :: Word</code></pre>
 <p>the inferred type of <code>one</code> is <code>Word</code> rather than <code>Integer</code>.</p>
 <p>This is not the case in Agda, e.g. a type for</p>
 <pre><code>  i = λ x -&gt; x</code></pre>
@@ -397,9 +356,9 @@ code > span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Inf
           <span class="agda2-highlight-symbol"><span class="agda2-highlight-unsolved-meta">(</span></span><span class="agda2-highlight-inductive-constructor"><span class="agda2-highlight-unsolved-meta">suc</span></span><span class="agda2-highlight-unsolved-meta"> </span><span class="agda2-highlight-symbol"><span class="agda2-highlight-unsolved-meta">_)</span></span><span class="agda2-highlight-unsolved-meta"> </span><span class="agda2-highlight-symbol"><span class="agda2-highlight-unsolved-meta">-&gt;</span></span><span class="agda2-highlight-unsolved-meta"> </span><span class="agda2-highlight-inductive-constructor"><span class="agda2-highlight-unsolved-meta">false</span></span>
 </pre>
 <p>which is a direct counterpart of Haskell's</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">  isZero <span class="fu">=</span> \<span class="kw">case</span>
-      <span class="dv">0</span> <span class="ot">-&gt;</span> <span class="dt">True</span>
-      _ <span class="ot">-&gt;</span> <span class="dt">False</span></code></pre></div>
+<pre><code>  isZero = \case
+      0 -&gt; True
+      _ -&gt; False</code></pre>
 <p>The latter is accepted by Haskell, but the former is not accepted by Agda: Agda colors the entire snippet in yellow meaning it's unable to resolve the generated metavariables. &quot;What's the problem? The inferred type should be just <code>ℕ -&gt; Bool</code>&quot; -- you might think. Such a type works indeed:</p>
 <pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-datatype">&#8469;</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-datatype">Bool</span>
   <span class="agda2-highlight-symbol">_</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-symbol">&#955;</span> <span class="agda2-highlight-keyword">where</span>
@@ -466,7 +425,7 @@ code > span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Inf
           <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-inductive-constructor">suc</span> <span class="agda2-highlight-symbol">_)</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-unsolved-constraint"><span class="agda2-highlight-unsolved-meta"><span class="agda2-highlight-inductive-constructor">false</span></span></span>
 </pre>
 <p>In the latter case Agda treats <code>_</code> as being potentially dependent on <code>n</code>, since <code>n</code> is explicitly bound. And in the former case there can't be any dependency on a non-existing variable.</p>
-<h2 id="inferenceandconstructors">InferenceAndConstructors</h2>
+<h2 id="inference-and-constructors">Inference and constructors</h2>
 <pre><span class="agda2-highlight-keyword">module</span> <span class="agda2-highlight-module">InferenceAndConstructors</span> <span class="agda2-highlight-keyword">where</span>
 </pre>
 <p>Since tuples are dependent, this</p>
@@ -529,14 +488,14 @@ code > span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Inf
 <pre><span class="agda2-highlight-keyword">module</span> <span class="agda2-highlight-module">UnderspecifiedArgument</span> <span class="agda2-highlight-keyword">where</span>
 </pre>
 <p>Another difference between Haskell and Agda is that Agda is not happy about ambiguous types that don't really affect anything. Consider a classic example: the <code>I</code> combinator can be defined in terms of the <code>S</code> and <code>K</code> combinators. In Haskell we can express that as</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">k ::</span> a <span class="ot">-&gt;</span> b <span class="ot">-&gt;</span> a
-k x y <span class="fu">=</span> x
+<pre><code>  k :: a -&gt; b -&gt; a
+  k x y = x
 
-<span class="ot">s ::</span> (a <span class="ot">-&gt;</span> b <span class="ot">-&gt;</span> c) <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> c
-s f g x <span class="fu">=</span> f x (g x)
+  s :: (a -&gt; b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+  s f g x = f x (g x)
 
-<span class="ot">i ::</span> a <span class="ot">-&gt;</span> a
-i <span class="fu">=</span> s k k</code></pre></div>
+  i :: a -&gt; a
+  i = s k k</code></pre>
 <p>and <a href="https://ideone.com/mZQM1f">it'll type check</a>. However the Agda's equivalent</p>
 <pre>  <span class="agda2-highlight-function">K</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-bound-variable">A</span> <span class="agda2-highlight-bound-variable">B</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-primitive-type">Set</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-bound-variable">A</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-bound-variable">B</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-bound-variable">A</span>
   <span class="agda2-highlight-function">K</span> <span class="agda2-highlight-bound-variable">x</span> <span class="agda2-highlight-bound-variable">y</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-bound-variable">x</span>
@@ -697,17 +656,17 @@ i <span class="fu">=</span> s k k</code></pre></div>
 <p>The implicit <code>A</code> gets inferred here: since all elements of a list have the same type, the type of <code>λ x -&gt; x</code> must be the same as the type of <code>suc</code>, which is known to be <code>ℕ -&gt; ℕ</code>, hence the type of <code>λ x -&gt; x</code> is also <code>ℕ -&gt; ℕ</code>.</p>
 <h3 id="comparison-to-haskell">Comparison to Haskell</h3>
 <p>In Haskell it's also the case that <code>a</code> is inferrable form a <code>[a]</code>: when the programmer writes</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">  sort ::</span> <span class="dt">Ord</span> a <span class="ot">=&gt;</span> [a] <span class="ot">-&gt;</span> [a]</code></pre></div>
+<pre><code>`  sort :: Ord a =&gt; [a] -&gt; [a]</code></pre>
 <p>Haskell is always able to infer <code>a</code> from the given list (provided <code>a</code> is known at the call site: <code>sort []</code> is as meaningless in Haskell as it is in Agda) and thus figure out what the appropriate <code>Ord a</code> instance is. However, another difference between Haskell and Agda is that whenever Haskell sees that some implicit variables (i.e. those bound by <code>forall &lt;list_of_vars&gt; .</code>) can't be inferred in the general case, Haskell, unlike Agda, will complain. E.g. consider the following piece of code:</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">  <span class="ot">{-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, TypeFamilies #-}</span>
+<pre><code>  {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, TypeFamilies #-}
 
-  <span class="kw">class</span> <span class="dt">C</span> a b <span class="kw">where</span>
-<span class="ot">    f ::</span> a <span class="ot">-&gt;</span> <span class="dt">Int</span>
+  class C a b where
+    f :: a -&gt; Int
 
-  <span class="kw">instance</span> b <span class="fu">~</span> () <span class="ot">=&gt;</span> <span class="dt">C</span> <span class="dt">Bool</span> b <span class="kw">where</span>
-    f _ <span class="fu">=</span> <span class="dv">0</span>
+  instance b ~ () =&gt; C Bool b where
+    f _ = 0
 
-  main <span class="fu">=</span> print <span class="fu">$</span> f <span class="dt">True</span></code></pre></div>
+  main = print $ f True</code></pre>
 <p>Even though at the call site (<code>f True</code>) <code>b</code> is determined via the <code>b ~ ()</code> constraint of the <code>C Bool b</code> instance and so there is no ambiguity, Haskell still complains about the definition of the <code>C</code> class itself:</p>
 <pre><code>  • Could not deduce (C a b0)
     from the context: C a b
@@ -748,11 +707,11 @@ i <span class="fu">=</span> s k k</code></pre></div>
   <span class="agda2-highlight-function">const-zero&#7522;&#7522;&#8242;</span> <span class="agda2-highlight-symbol">{{_}}</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-function">const-zero&#7522;&#7522;</span>
 </pre>
 <p>does not result in unresolved metas.</p>
-<h2 id="under-the-hood">Under the hood</h2>
+<h3 id="under-the-hood">Under the hood</h3>
 <pre><span class="agda2-highlight-keyword">module</span> <span class="agda2-highlight-module">UnderTheHood</span> <span class="agda2-highlight-keyword">where</span>
   <span class="agda2-highlight-keyword">open</span> <span class="agda2-highlight-module">BasicsOfTypeInference</span>
 </pre>
-<h3 id="example-1-listid-1-2">Example 1: <code>listId (1 ∷ 2 ∷ [])</code></h3>
+<h4 id="example-1-listid-1-2">Example 1: <code>listId (1 ∷ 2 ∷ [])</code></h4>
 <p>Returning to our <code>listId</code> example, when the user writes</p>
 <pre>  <span class="agda2-highlight-function">listId</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-symbol">&#8704;</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-bound-variable">A</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-datatype">List</span> <span class="agda2-highlight-bound-variable">A</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-datatype">List</span> <span class="agda2-highlight-bound-variable">A</span>
   <span class="agda2-highlight-function">listId</span> <span class="agda2-highlight-bound-variable">xs</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-bound-variable">xs</span>
@@ -767,7 +726,7 @@ i <span class="fu">=</span> s k k</code></pre></div>
 <li>From unification's point of view type constructors are injective, hence <code>List _A =?= List ℕ</code> simplifies to <code>_A =?= ℕ</code>, which immediately gets solved as <code>_A := ℕ</code></li>
 </ol>
 <p>And this is how Agda figures out that <code>A</code> gets instantiated by <code>ℕ</code>.</p>
-<h3 id="example-2-suc-listid-λ-x---x">Example 2: <code>suc ∷ listId ((λ x -&gt; x) ∷ [])</code></h3>
+<h4 id="example-2-suc-listid-λ-x---x">Example 2: <code>suc ∷ listId ((λ x -&gt; x) ∷ [])</code></h4>
 <p>Similarly, when the user writes</p>
 <pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-inductive-constructor">suc</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;</span></span> <span class="agda2-highlight-function">listId</span> <span class="agda2-highlight-symbol">((&#955;</span> <span class="agda2-highlight-bound-variable">x</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-bound-variable">x</span><span class="agda2-highlight-symbol">)</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;</span></span> <span class="agda2-highlight-inductive-constructor">[]</span><span class="agda2-highlight-symbol">)</span>
 </pre>
@@ -788,7 +747,7 @@ i <span class="fu">=</span> s k k</code></pre></div>
 <pre><code> _B := ℕ
  _A := ℕ -&gt; ℕ</code></pre></li>
 </ol>
-<h3 id="example-3-λ-xs---suc-listid-xs">Example 3: <code>λ xs -&gt; suc ∷ listId xs</code></h3>
+<h4 id="example-3-λ-xs---suc-listid-xs">Example 3: <code>λ xs -&gt; suc ∷ listId xs</code></h4>
 <p>When the user writes</p>
 <pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-symbol">&#955;</span> <span class="agda2-highlight-bound-variable">xs</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-inductive-constructor">suc</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;</span></span> <span class="agda2-highlight-function">listId</span> <span class="agda2-highlight-bound-variable">xs</span>
 </pre>
@@ -856,7 +815,7 @@ i <span class="fu">=</span> s k k</code></pre></div>
 <p>Therefore, <code>F A</code> (where <code>F</code> is a bound variable) uniquely determines neither <code>F</code> nor <code>A</code>, i.e. <code>F A !⇉ F , A</code>.</p>
 <h3 id="comparison-to-haskell-1">Comparison to Haskell</h3>
 <p>A type application of a variable is injective in Haskell. I.e. unification of <code>f a</code> and <code>g b</code> (where <code>f</code> and <code>g</code> are type variables) forces unification of <code>a</code> and <code>b</code>, as well as unification of <code>f</code> and <code>g</code>. I.e. not only does <code>f a ⇉ a</code> hold for arbitrary type variable <code>f</code>, but also <code>f a ⇉ f</code>. This makes it possible to define functions like</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">fmap<span class="ot"> ::</span> <span class="dt">Functor</span> f <span class="ot">=&gt;</span> (a <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> f a <span class="ot">-&gt;</span> f b</code></pre></div>
+<pre><code>  fmap :: Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b</code></pre>
 <p>and use them without compulsively specifying <code>f</code> at the call site each time.</p>
 <p>Haskell is able to infer <code>f</code>, because no analogue of Agda's <code>λ _ -&gt; List ℕ</code> is possible in Haskell as its surface language doesn't have type lambdas. You can't pass a type family as <code>f</code> either. Therefore there exists only one solution for &quot;unify <code>f a</code> with <code>List Int</code>&quot; in Haskell and it's the expected one:</p>
 <pre><code>  f := List
