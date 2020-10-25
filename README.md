@@ -1,5 +1,7 @@
 # Unification in Agda
 
+Please do not post this publicly anywhere just yet.
+
 ## Building the HTML
 
 ### Prerequisites
@@ -26,7 +28,7 @@
 
 ### Generating the HTML
 
-*IMPORTANT*: wait for each command to finish.
+**IMPORTANT**: wait for each command to finish.
 
 1. open `UnificationInAgda.lagda.md` in emacs
 2. `C-c C-l` (type check the file)
