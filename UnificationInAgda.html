@@ -47,6 +47,7 @@
 <li><a href="#generating-type-level-data">Generating type-level data</a></li>
 </ul></li>
 <li><a href="#universe-levels">Universe levels</a></li>
+<li><a href="#acknowledgements">Acknowledgements</a></li>
 </ul></li>
 </ul>
 </div>
@@ -1727,9 +1728,14 @@ Specializing <code>m</code> doesn't help, still yellow:
 <p>which in turn allows us to <a href="http://effectfully.blogspot.com/2016/07/cumu.html">emulate cumulativity of universes</a> in Agda (although there is an experimental option <a href="https://agda.readthedocs.io/en/latest/language/cumulativity.html"><code>--cumulativity</code></a> that makes the universe hierarchy cumulative).</p>
 <p>The list of equalities shown above is not exhaustive. E.g. if during type checking Agda comes up with the following constraint:</p>
 <pre><code>  α &lt;= β &lt;= α</code></pre>
-it gets solved as <code>α ≡ β</code>.
+<p>it gets solved as <code>α ≡ β</code>.</p>
+<h2 id="acknowledgements">Acknowledgements</h2>
+<p>Huge &quot;thank you&quot; goes to major contributors:</p>
+<ul>
+<li>Andreas Abel
 </pre>
 </body>
-</html>
+</html></li>
+</ul>
 </body>
 </html>

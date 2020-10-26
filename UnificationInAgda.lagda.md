@@ -2512,3 +2512,9 @@ The list of equalities shown above is not exhaustive. E.g. if during type checki
       α <= β <= α
 
 it gets solved as `α ≡ β`.
+
+## Acknowledgements
+
+Huge "thank you" goes to major contributors:
+
+- Andreas Abel
