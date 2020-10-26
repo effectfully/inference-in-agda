@@ -4,6 +4,8 @@
 module UnificationInAgda where
 ```
 
+For sources, issue reports or contributing go to [the GitHub page](https://github.com/effectfully/unification-in-agda).
+
 ## Preface
 
 Agda is a wonderful language and its unification engines are exemplary, practical, improve over time and work predictably well. Unification engines are one notable distiction between Agda and other dependently typed languages (such as Idris 1, Coq, Lean, etc). I'm saying "unification engines", because there are two of them:
