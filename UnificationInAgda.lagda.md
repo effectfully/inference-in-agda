@@ -936,7 +936,7 @@ Similarly, when the user writes
 1. the implicit `A` gets instantiated as a metavariable `_A`
 2. the type of the instantiated `listId` becomes `List _A -> List _A`
 3. `List _A` (what the instantiated `listId` expects as an argument) gets unified with `List (_B -> _B)` (the type of the actual argument). `_B` is another metavariable. Recall that we don't know the type of `x` and hence we simply make it a meta
-4. `List _A` (this time the type of the result that `listId` returns) also gets unified with the expected type, which is `ℕ -> ℕ`, because `suc` prepended to the result of the `listId` application is of this type
+4. `List _A` (this time the type of the result that `listId` returns) also gets unified with the expected type, which is `List (ℕ -> ℕ)`, because `suc` prepended to the result of the `listId` application is of this type
 5. we get the following [unification problem](https://en.wikipedia.org/wiki/Unification_(computer_science)#Unification_problem,_solution_set) consisting of two equations:
 
          List _A =?= List (_B -> _B)
@@ -1162,7 +1162,7 @@ does not type check giving:
         suc n ≟ n₁ + 1
       when checking that the pattern x ∷ᵥ _ has type Vec A (n + 1)
 
-That's because `_+_` is defined by pattern matching on its left operand, so `1 + n` computes while `n + 1` is stuck and does not compute as `n` is a variable rather than an expression starting with a constructor of `ℕ`. `headᵥ⁺-wrong` `is a contrived example, but this problem can arise in real cases, for example consider a naive attempt to define the `reverse` function over `Vec` using an accumulator, the helper type checks perfectly:
+That's because `_+_` is defined by pattern matching on its left operand, so `1 + n` computes while `n + 1` is stuck and does not compute as `n` is a variable rather than an expression starting with a constructor of `ℕ`. `headᵥ⁺-wrong` is a contrived example, but this problem can arise in real cases, for example consider a naive attempt to define the `reverse` function over `Vec` using an accumulator, the helper type checks perfectly:
 
 ```agda
   reverse-go : ∀ {A n m} -> Vec A m -> Vec A n -> Vec A (n + m)
@@ -2461,7 +2461,7 @@ I.e. the `Sets`-based `zipWithN` is at least as good inference-wise as its `List
   _ = refl
 ```
 
-This approach generalizes to dependenty-typed functions as well as full universe polymorpism, see [this Stack Overflow question and answer](https://stackoverflow.com/q/29179508/3237465) for an elaborated example. And it's possible to write a general machinery that supports both non-dependent and dependent n-ary functions, see this [blog post](http://effectfully.blogspot.com/2016/04/generic-universe-polymorphic.html).
+This approach generalizes to dependently typed functions as well as full universe polymorpism, see [this Stack Overflow question and answer](https://stackoverflow.com/q/29179508/3237465) for an elaborated example. And it's possible to write a general machinery that supports both non-dependent and dependent n-ary functions, see this [blog post](http://effectfully.blogspot.com/2016/04/generic-universe-polymorphic.html).
 
 ## Universe levels
 
