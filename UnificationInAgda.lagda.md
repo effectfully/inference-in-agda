@@ -524,6 +524,8 @@ Here the inner `id` doesn't get instantiated and gets fed to the outer `id` as i
 
 Eager insertion of implicits is the reason why Agda infers the type of `[]` as `List _A_42`: `[]` gets elaborated to `[] {_}`, because the explicit argument `A` of `List` is implicit for the constructors of `List` (i.e. `[]` and `_∷_`) and that implicit gets eagerly inserted.
 
+One exception to the general rule that implicits get bound and inserted eagerly is aliases: a definition of the form `<name1> = <name2>` doesn't need a type signature (as we saw before with the `_∘ = _∘_` example) and gets accepted as is regardless of whether `<name2>` has any leading implicit arguments or not. Basically, `<name1>` inherits its type signature from `<name2>` without any further elaboration.
+
 There is a notorious bug related to insertion of implicit lambdas that has been in Agda for ages (even since its creation probably?) called The Hidden Lambda Bug. I'm not going to describe the bug here as details change across different version of Agda, but here are some links:
 
 - tracked in [this issue](https://github.com/agda/agda/issues/1079)
@@ -866,7 +868,7 @@ results in unresolved metas, because it elaborates to
   const-zeroᵢ′-elaborated {_} = const-zeroᵢ {_}
 ```
 
-(due to eager insertion of implicits) and the fact that there's a variable of type `ℕ` bound in the current scope (regardless of whether it's bound explicitly or implicitly) does not have any effect on how implicits get resolved in the body of the definition as metavariable resolution does not come up with instantiations for metavariables at random by looking at the local or global scope, it only determines what instantiations are bound to be by solving unification problems that arise during type checking.
+(due to eager insertion of implicits) and the fact that there's a variable of type `ℕ` bound in the current scope (regardless of whether it's bound explicitly or implicitly) does not have any effect on how implicits get resolved in the body of the definition. Metavariable resolution does not come up with instantiations for metavariables at random by looking at the local or global scope, it only determines what instantiations are bound to be by solving unification problems that arise during type checking.
 
 But note that even though a value of type `{ℕ} -> ℕ` is not very useful on its own, having such a value as an argument like this:
 
@@ -1041,12 +1043,12 @@ Unfortunately applying `fId` to a list without explicitly instantiating `F` as `
   _ = fId (1 ∷ 2 ∷ [])
 ```
 
-results in both `F` and `A` not being resolved. This might be surprising, but there is a good reason for this behavior: there are multiple ways `F` and `A` can be instantiated, so Agda doesn't attempt to pick a random one. Here's the solution that the user would probably have had in their mind:
+results in both `F` and `A` not being resolved. This might be surprising, but there is a good reason for this behavior: there are multiple ways `F` and `A` can be instantiated. Here's the solution that the user would probably have had in their mind:
 
       _F := List
       _A := ℕ
 
-but this one is also valid:
+which is what a first-order unification engine would come up with. But Agda's unification engine is [higher-order](https://stackoverflow.com/a/2504347/3237465) and so this solution is also valid:
 
       _F := λ _ -> List ℕ
       _A := Bool
@@ -1057,6 +1059,8 @@ i.e. `F` ignores `A` and just returns `List ℕ`:
   _ = fId {λ _ -> List ℕ} {Bool} (1 ∷ 2 ∷ [])
 ```
 
+Given that there are two valid solutions, Agda does not pick one at random and instead reports that there's ambiguity.
+
 Even if you specify `A = ℕ`, `F` still can be either `List` or `λ _ -> List ℕ`, so you have to specify `F` (and then the problem reduces to the one that we considered earlier, hence there is no need to also specify `A`):
 
 ```agda
@@ -1064,6 +1068,12 @@ Even if you specify `A = ℕ`, `F` still can be either `List` or `λ _ -> List �
 ```
 
 Therefore, `F A` (where `F` is a bound variable) uniquely determines neither `F` nor `A`, i.e. `F A !⇉ F , A`.
+
+[Andreas Abel](https://github.com/andreasabel)'s commented:
+
+> Future research could improve on unification via an analysis in which situation the chosen solution does not matter (however, I never got around to do this research).
+>
+> The example you give is such an instance: it does not matter how we solve `_F _A =?= List ℕ`, because the solutions of `_F` and `_A` can never flow out of the expression `fId _F _A (1 ∷ 2 ∷ []) : _F _A`.
 
 ### Comparison to Haskell
 
@@ -1780,7 +1790,7 @@ still does not type check, because inlining `m` as `1` does not make `_+_` const
       zero  +1 = suc zero
       suc n +1 = suc (n +1)
 
-#### Example 2: polyvariadic `zipWith`: list-based
+-- #### Example 2: polyvariadic `zipWith`: list-based
 
 ```agda
 module PolyvariadicZipWith where
@@ -1816,12 +1826,12 @@ This allows us to compute the n-ary type of the function. In order to compute th
   ToVecFun As B m = ToFun (List.map (λ A -> Vec A m) As) (Vec B m)
 ```
 
-It only remains to recurse on the list of types in an auxiliary function (n-ary `(<*>)`, in Haskell jargon) and define `zipWithN` in terms of that function:
+It only remains to recurse on the list of types in an auxiliary function (n-ary `(<*>)`, in Haskell jargon) and define `zipWithN` in terms of that function (we use `Vec.zipWith _$_` instead of `_⊛_`, because the latter has a [slightly broken inference](https://github.com/agda/agda-stdlib/issues/1338) in some versions of the standard library):
 
 ```agda
   apN : ∀ {As B m} -> Vec (ToFun As B) m -> ToVecFun As B m
   apN {[]}     ys = ys
-  apN {A ∷ As} fs = λ xs -> apN {As} (fs ⊛ xs)
+  apN {A ∷ As} fs = λ xs -> apN {As} (Vec.zipWith _$_ fs xs)
 
   zipWithN : ∀ {As B m} -> ToFun As B -> ToVecFun As B m
   zipWithN f = apN (Vec.replicate f)
@@ -1926,31 +1936,54 @@ We don't need to invert `ToFun` when the _spine_ of `As` is provided explicitly:
 
 as Agda only needs to know the spine of `As` and not the actual types stored in the list in order for `ToFun` to compute (since `ToFun` is defined by pattern matching on the spine of its argument and so the actual elements of the list are computationally irrelevant). `ToFun (_A₁ ∷ _A₂ ∷ []) _B` computes to `_A₁ -> _A₂ -> _B` and unifying that type with `ℕ -> ℕ -> ℕ` is a trivial task.
 
-Omitting an argument results in metas not being resolved in the version of Agda that I'm using:
+Omitting a second vector still allows Agda to infer everything:
 
 ```agda
   _ : zipWithN _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) _ ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
   _ = refl
 ```
 
-This is something that I can't explain, I'm unable to spot any problem with solving
+as it only needs to solve
 
-      ToVecFun _As _B _n ≡ (Vec ℕ m -> _ -> Vec ℕ m)
+      ToVecFun _As _B _n =?= Vec ℕ m -> _ -> Vec ℕ m
 
-with
+as
 
       _As := Vec ℕ m ∷ Vec ℕ m ∷ []
       _B  := Vec ℕ m
       _n  := m
 
-And specifying `B` doesn't help in this case:
+(which is possible due to the type of result being the concrete `Vec`, disjoint with `_->_`) and then solve all the pointwise equations:
+
+      1 + _ =?= 5
+      2 + _ =?= 6
+      3 + _ =?= 7
+
+by reducing them to
+
+      suc _             =?= suc (suc (suc (suc (suc _))))
+      suc (suc _)       =?= suc (suc (suc (suc (suc (suc _)))))
+      suc (suc (suc _)) =?= suc (suc (suc (suc (suc (suc (suc _))))))
+
+(due to `_+_` being defined by pattern matching on its first argument) and then inverting all the `suc`s.
+
+Omitting a first vector gives yellow, though:
 
 ```agda
-  _ : zipWithN {B = ℕ} _+_ (1 ∷ᵥ 2 ∷ᵥ 3 ∷ᵥ []ᵥ) _ ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
+  _ : zipWithN _+_ _ (4 ∷ᵥ 5 ∷ᵥ 6 ∷ᵥ []ᵥ) ≡ (5 ∷ᵥ 7 ∷ᵥ 9 ∷ᵥ []ᵥ)
   _ = refl
 ```
 
-Finally that constructor-headedness is compositional. The
+as the version of Agda that I'm using can't solve equations like
+
+```agda
+  _ : _ + 4 ≡ 5
+  _ = refl
+```
+
+due `_ + 4` being stuck and not reducing to anything. Even though Agda could potentially solve such equations, given the constructor/variable-headedness of `_+_`.
+
+Finally, constructor-headedness is compositional. The
 
       ToVecFun _As _B _n =?= Vec ℕ m -> Vec ℕ m -> Vec ℕ m
 
@@ -2419,7 +2452,7 @@ And the rest is the same as the previous version except `List` is replaced by `S
   -- possible to infer it from the type of the result.
   apN : ∀ {n B m} {As : Sets n} -> Vec (ToFun As B) m -> ToVecFun As B m
   apN {0}     ys = ys
-  apN {suc n} fs = λ xs -> apN (fs ⊛ xs)
+  apN {suc n} fs = λ xs -> apN (zipWith _$_ fs xs)
 
   zipWithN : ∀ n {B m} {As : Sets n} -> ToFun As B -> ToVecFun As B m
   zipWithN _ f = apN (Vec.replicate f)

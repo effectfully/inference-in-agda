@@ -54,7 +54,7 @@
 <pre><style type="text/css">
     <!--
       body {
-        color: #252525;
+        color: #000000;
         background-color: #ffffff;
       }
       .agda2-highlight-bound-variable {
@@ -69,53 +69,53 @@
       }
       .agda2-highlight-datatype {
         /* agda2-highlight-datatype-face */
-        color: #5632d6;
+        color: #0000cd;
       }
       .agda2-highlight-field {
         /* agda2-highlight-field-face */
-        color: #f5509a;
+        color: #ee1289;
       }
       .agda2-highlight-function {
         /* agda2-highlight-function-face */
-        color: #5632d6;
+        color: #0000cd;
       }
       .agda2-highlight-inductive-constructor {
         /* agda2-highlight-inductive-constructor-face */
-        color: #449d34;
+        color: #008b00;
       }
       .agda2-highlight-keyword {
         /* agda2-highlight-keyword-face */
-        color: #da7d33;
+        color: #cd6600;
       }
       .agda2-highlight-module {
         /* agda2-highlight-module-face */
-        color: #b34ef4;
+        color: #a020f0;
       }
       .agda2-highlight-number {
         /* agda2-highlight-number-face */
-        color: #b34ef4;
+        color: #a020f0;
       }
       .agda2-highlight-operator {
       }
       .agda2-highlight-postulate {
         /* agda2-highlight-postulate-face */
-        color: #5632d6;
+        color: #0000cd;
       }
       .agda2-highlight-primitive {
         /* agda2-highlight-primitive-face */
-        color: #5632d6;
+        color: #0000cd;
       }
       .agda2-highlight-primitive-type {
         /* agda2-highlight-primitive-type-face */
-        color: #5632d6;
+        color: #0000cd;
       }
       .agda2-highlight-record {
         /* agda2-highlight-record-face */
-        color: #5632d6;
+        color: #0000cd;
       }
       .agda2-highlight-symbol {
         /* agda2-highlight-symbol-face */
-        color: #595959;
+        color: #404040;
       }
       .agda2-highlight-unsolved-constraint {
         /* agda2-highlight-unsolved-constraint-face */
@@ -127,7 +127,7 @@
       }
       .comment {
         /* font-lock-comment-face */
-        color: #c44a3f;
+        color: #b22222;
       }
       .comment-delimiter {
         /* font-lock-comment-delimiter-face */
@@ -135,7 +135,7 @@
       }
       .default {
         /* default */
-        color: #252525;
+        color: #000000;
         background-color: #ffffff;
       }
 
@@ -478,6 +478,7 @@
 <p>Here the inner <code>id</code> doesn't get instantiated and gets fed to the outer <code>id</code> as is. Hence the outer <code>id</code> is instantiated at <code>{A : Set} -&gt; A -&gt; A</code>, which is the type of the inner uninstantiated <code>id</code>.</p>
 <p>(Except that definition does not type check, because <code>{A : Set} -&gt; A -&gt; A</code> is of type <code>Set₁</code> rather than <code>Set</code> and we don't bother fixing this with proper universe polymorphism as those details are irrelevant for explaining how implicits get inserted)</p>
 <p>Eager insertion of implicits is the reason why Agda infers the type of <code>[]</code> as <code>List _A_42</code>: <code>[]</code> gets elaborated to <code>[] {_}</code>, because the explicit argument <code>A</code> of <code>List</code> is implicit for the constructors of <code>List</code> (i.e. <code>[]</code> and <code>_∷_</code>) and that implicit gets eagerly inserted.</p>
+<p>One exception to the general rule that implicits get bound and inserted eagerly is aliases: a definition of the form <code>&lt;name1&gt; = &lt;name2&gt;</code> doesn't need a type signature (as we saw before with the <code>_∘ = _∘_</code> example) and gets accepted as is regardless of whether <code>&lt;name2&gt;</code> has any leading implicit arguments or not. Basically, <code>&lt;name1&gt;</code> inherits its type signature from <code>&lt;name2&gt;</code> without any further elaboration.</p>
 <p>There is a notorious bug related to insertion of implicit lambdas that has been in Agda for ages (even since its creation probably?) called The Hidden Lambda Bug. I'm not going to describe the bug here as details change across different version of Agda, but here are some links:</p>
 <ul>
 <li>tracked in <a href="https://github.com/agda/agda/issues/1079">this issue</a></li>
@@ -689,7 +690,7 @@
 <pre>  <span class="agda2-highlight-function">const-zero&#7522;&#8242;-elaborated</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-datatype">&#8469;</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-datatype">&#8469;</span>
   <span class="agda2-highlight-function">const-zero&#7522;&#8242;-elaborated</span> <span class="agda2-highlight-symbol">{_}</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-function">const-zero&#7522;</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-symbol"><span class="agda2-highlight-unsolved-meta">_</span></span><span class="agda2-highlight-symbol">}</span>
 </pre>
-<p>(due to eager insertion of implicits) and the fact that there's a variable of type <code>ℕ</code> bound in the current scope (regardless of whether it's bound explicitly or implicitly) does not have any effect on how implicits get resolved in the body of the definition as metavariable resolution does not come up with instantiations for metavariables at random by looking at the local or global scope, it only determines what instantiations are bound to be by solving unification problems that arise during type checking.</p>
+<p>(due to eager insertion of implicits) and the fact that there's a variable of type <code>ℕ</code> bound in the current scope (regardless of whether it's bound explicitly or implicitly) does not have any effect on how implicits get resolved in the body of the definition. Metavariable resolution does not come up with instantiations for metavariables at random by looking at the local or global scope, it only determines what instantiations are bound to be by solving unification problems that arise during type checking.</p>
 <p>But note that even though a value of type <code>{ℕ} -&gt; ℕ</code> is not very useful on its own, having such a value as an argument like this:</p>
 <pre>  <span class="agda2-highlight-function">at1</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-symbol">({</span><span class="agda2-highlight-datatype">&#8469;</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-datatype">&#8469;</span><span class="agda2-highlight-symbol">)</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-datatype">&#8469;</span>
   <span class="agda2-highlight-function">at1</span> <span class="agda2-highlight-bound-variable">f</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-bound-variable">f</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-number">1</span><span class="agda2-highlight-symbol">}</span>
@@ -802,19 +803,25 @@
 <p>Unfortunately applying <code>fId</code> to a list without explicitly instantiating <code>F</code> as <code>List</code></p>
 <pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-function"><span class="agda2-highlight-unsolved-meta">fId</span></span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-unsolved-constraint"><span class="agda2-highlight-unsolved-meta"><span class="agda2-highlight-number">1</span></span></span><span class="agda2-highlight-unsolved-constraint"><span class="agda2-highlight-unsolved-meta"> </span></span><span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor"><span class="agda2-highlight-unsolved-meta"><span class="agda2-highlight-unsolved-constraint">&#8759;</span></span></span></span><span class="agda2-highlight-unsolved-constraint"><span class="agda2-highlight-unsolved-meta"> </span></span><span class="agda2-highlight-unsolved-constraint"><span class="agda2-highlight-unsolved-meta"><span class="agda2-highlight-number">2</span></span></span><span class="agda2-highlight-unsolved-constraint"><span class="agda2-highlight-unsolved-meta"> </span></span><span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor"><span class="agda2-highlight-unsolved-meta"><span class="agda2-highlight-unsolved-constraint">&#8759;</span></span></span></span><span class="agda2-highlight-unsolved-constraint"><span class="agda2-highlight-unsolved-meta"> </span></span><span class="agda2-highlight-unsolved-constraint"><span class="agda2-highlight-unsolved-meta"><span class="agda2-highlight-inductive-constructor">[]</span></span></span><span class="agda2-highlight-symbol">)</span>
 </pre>
-<p>results in both <code>F</code> and <code>A</code> not being resolved. This might be surprising, but there is a good reason for this behavior: there are multiple ways <code>F</code> and <code>A</code> can be instantiated, so Agda doesn't attempt to pick a random one. Here's the solution that the user would probably have had in their mind:</p>
+<p>results in both <code>F</code> and <code>A</code> not being resolved. This might be surprising, but there is a good reason for this behavior: there are multiple ways <code>F</code> and <code>A</code> can be instantiated. Here's the solution that the user would probably have had in their mind:</p>
 <pre><code>  _F := List
   _A := ℕ</code></pre>
-<p>but this one is also valid:</p>
+<p>which is what a first-order unification engine would come up with. But Agda's unification engine is <a href="https://stackoverflow.com/a/2504347/3237465">higher-order</a> and so this solution is also valid:</p>
 <pre><code>  _F := λ _ -&gt; List ℕ
   _A := Bool</code></pre>
 <p>i.e. <code>F</code> ignores <code>A</code> and just returns <code>List ℕ</code>:</p>
 <pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-function">fId</span> <span class="agda2-highlight-symbol">{&#955;</span> <span class="agda2-highlight-symbol"><span class="agda2-highlight-bound-variable">_</span></span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-datatype">List</span> <span class="agda2-highlight-datatype">&#8469;</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-datatype">Bool</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-number">1</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;</span></span> <span class="agda2-highlight-number">2</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;</span></span> <span class="agda2-highlight-inductive-constructor">[]</span><span class="agda2-highlight-symbol">)</span>
 </pre>
+<p>Given that there are two valid solutions, Agda does not pick one at random and instead reports that there's ambiguity.</p>
 <p>Even if you specify <code>A = ℕ</code>, <code>F</code> still can be either <code>List</code> or <code>λ _ -&gt; List ℕ</code>, so you have to specify <code>F</code> (and then the problem reduces to the one that we considered earlier, hence there is no need to also specify <code>A</code>):</p>
 <pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-function">fId</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-datatype">List</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-number">1</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;</span></span> <span class="agda2-highlight-number">2</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;</span></span> <span class="agda2-highlight-inductive-constructor">[]</span><span class="agda2-highlight-symbol">)</span>
 </pre>
 <p>Therefore, <code>F A</code> (where <code>F</code> is a bound variable) uniquely determines neither <code>F</code> nor <code>A</code>, i.e. <code>F A !⇉ F , A</code>.</p>
+<p><a href="https://github.com/andreasabel">Andreas Abel</a>'s commented:</p>
+<blockquote>
+<p>Future research could improve on unification via an analysis in which situation the chosen solution does not matter (however, I never got around to do this research).</p>
+<p>The example you give is such an instance: it does not matter how we solve <code>_F _A =?= List ℕ</code>, because the solutions of <code>_F</code> and <code>_A</code> can never flow out of the expression <code>fId _F _A (1 ∷ 2 ∷ []) : _F _A</code>.</p>
+</blockquote>
 <h3 id="comparison-to-haskell-1">Comparison to Haskell</h3>
 <p>A type application of a variable is injective in Haskell. I.e. unification of <code>f a</code> and <code>g b</code> (where <code>f</code> and <code>g</code> are type variables) forces unification of <code>a</code> and <code>b</code>, as well as unification of <code>f</code> and <code>g</code>. I.e. not only does <code>f a ⇉ a</code> hold for arbitrary type variable <code>f</code>, but also <code>f a ⇉ f</code>. This makes it possible to define functions like</p>
 <pre><code>  fmap :: Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b</code></pre>
@@ -1254,7 +1261,7 @@ Specializing <code>m</code> doesn't help, still yellow:
 <pre><code>  _+1 : ℕ -&gt; ℕ
   zero  +1 = suc zero
   suc n +1 = suc (n +1)</code></pre>
-<h4 id="example-2-polyvariadic-zipwith-list-based">Example 2: polyvariadic <code>zipWith</code>: list-based</h4>
+<p>-- #### Example 2: polyvariadic <code>zipWith</code>: list-based</p>
 <pre><span class="agda2-highlight-keyword">module</span> <span class="agda2-highlight-module">PolyvariadicZipWith</span> <span class="agda2-highlight-keyword">where</span>
   <span class="agda2-highlight-keyword">open</span> <span class="agda2-highlight-keyword">import</span> <span class="agda2-highlight-module">Data.List.Base</span> <span class="agda2-highlight-symbol">as</span> <span class="agda2-highlight-module">List</span>
   <span class="agda2-highlight-keyword">open</span> <span class="agda2-highlight-keyword">import</span> <span class="agda2-highlight-module">Data.Vec.Base</span> <span class="agda2-highlight-symbol">as</span> <span class="agda2-highlight-module">Vec</span> <span class="agda2-highlight-keyword">renaming</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">_&#8759;_</span></span> <span class="agda2-highlight-symbol">to</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">_&#8759;&#7525;_</span></span><span class="agda2-highlight-symbol">;</span> <span class="agda2-highlight-inductive-constructor">[]</span> <span class="agda2-highlight-symbol">to</span> <span class="agda2-highlight-inductive-constructor">[]&#7525;</span><span class="agda2-highlight-symbol">)</span>
@@ -1276,10 +1283,10 @@ Specializing <code>m</code> doesn't help, still yellow:
 <pre>  <span class="agda2-highlight-function">ToVecFun</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-datatype">List</span> <span class="agda2-highlight-primitive-type">Set</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-primitive-type">Set</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-datatype">&#8469;</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-primitive-type">Set</span>
   <span class="agda2-highlight-function">ToVecFun</span> <span class="agda2-highlight-bound-variable">As</span> <span class="agda2-highlight-bound-variable">B</span> <span class="agda2-highlight-bound-variable">m</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-function">ToFun</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-function">List.map</span> <span class="agda2-highlight-symbol">(&#955;</span> <span class="agda2-highlight-bound-variable">A</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-datatype">Vec</span> <span class="agda2-highlight-bound-variable">A</span> <span class="agda2-highlight-bound-variable">m</span><span class="agda2-highlight-symbol">)</span> <span class="agda2-highlight-bound-variable">As</span><span class="agda2-highlight-symbol">)</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-datatype">Vec</span> <span class="agda2-highlight-bound-variable">B</span> <span class="agda2-highlight-bound-variable">m</span><span class="agda2-highlight-symbol">)</span>
 </pre>
-<p>It only remains to recurse on the list of types in an auxiliary function (n-ary <code>(&lt;*&gt;)</code>, in Haskell jargon) and define <code>zipWithN</code> in terms of that function:</p>
+<p>It only remains to recurse on the list of types in an auxiliary function (n-ary <code>(&lt;*&gt;)</code>, in Haskell jargon) and define <code>zipWithN</code> in terms of that function (we use <code>Vec.zipWith _$_</code> instead of <code>_⊛_</code>, because the latter has a <a href="https://github.com/agda/agda-stdlib/issues/1338">slightly broken inference</a> in some versions of the standard library):</p>
 <pre>  <span class="agda2-highlight-function">apN</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-symbol">&#8704;</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-bound-variable">As</span> <span class="agda2-highlight-bound-variable">B</span> <span class="agda2-highlight-bound-variable">m</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-datatype">Vec</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-function">ToFun</span> <span class="agda2-highlight-bound-variable">As</span> <span class="agda2-highlight-bound-variable">B</span><span class="agda2-highlight-symbol">)</span> <span class="agda2-highlight-bound-variable">m</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-function">ToVecFun</span> <span class="agda2-highlight-bound-variable">As</span> <span class="agda2-highlight-bound-variable">B</span> <span class="agda2-highlight-bound-variable">m</span>
   <span class="agda2-highlight-function">apN</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-inductive-constructor">[]</span><span class="agda2-highlight-symbol">}</span>     <span class="agda2-highlight-bound-variable">ys</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-bound-variable">ys</span>
-  <span class="agda2-highlight-function">apN</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-bound-variable">A</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;</span></span> <span class="agda2-highlight-bound-variable">As</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-bound-variable">fs</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-symbol">&#955;</span> <span class="agda2-highlight-bound-variable">xs</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-function">apN</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-bound-variable">As</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-bound-variable">fs</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-function">&#8859;</span></span> <span class="agda2-highlight-bound-variable">xs</span><span class="agda2-highlight-symbol">)</span>
+  <span class="agda2-highlight-function">apN</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-bound-variable">A</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;</span></span> <span class="agda2-highlight-bound-variable">As</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-bound-variable">fs</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-symbol">&#955;</span> <span class="agda2-highlight-bound-variable">xs</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-function">apN</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-bound-variable">As</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-function">Vec.zipWith</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-function">_$_</span></span> <span class="agda2-highlight-bound-variable">fs</span> <span class="agda2-highlight-bound-variable">xs</span><span class="agda2-highlight-symbol">)</span>
 
   <span class="agda2-highlight-function">zipWithN</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-symbol">&#8704;</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-bound-variable">As</span> <span class="agda2-highlight-bound-variable">B</span> <span class="agda2-highlight-bound-variable">m</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-function">ToFun</span> <span class="agda2-highlight-bound-variable">As</span> <span class="agda2-highlight-bound-variable">B</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-function">ToVecFun</span> <span class="agda2-highlight-bound-variable">As</span> <span class="agda2-highlight-bound-variable">B</span> <span class="agda2-highlight-bound-variable">m</span>
   <span class="agda2-highlight-function">zipWithN</span> <span class="agda2-highlight-bound-variable">f</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-function">apN</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-function">Vec.replicate</span> <span class="agda2-highlight-bound-variable">f</span><span class="agda2-highlight-symbol">)</span>
@@ -1343,21 +1350,35 @@ Specializing <code>m</code> doesn't help, still yellow:
   <span class="agda2-highlight-symbol">_</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-inductive-constructor">refl</span>
 </pre>
 <p>as Agda only needs to know the spine of <code>As</code> and not the actual types stored in the list in order for <code>ToFun</code> to compute (since <code>ToFun</code> is defined by pattern matching on the spine of its argument and so the actual elements of the list are computationally irrelevant). <code>ToFun (_A₁ ∷ _A₂ ∷ []) _B</code> computes to <code>_A₁ -&gt; _A₂ -&gt; _B</code> and unifying that type with <code>ℕ -&gt; ℕ -&gt; ℕ</code> is a trivial task.</p>
-<p>Omitting an argument results in metas not being resolved in the version of Agda that I'm using:</p>
+<p>Omitting a second vector still allows Agda to infer everything:</p>
 <pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-function">zipWithN</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-primitive">_+_</span></span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-number">1</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-number">2</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-number">3</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-inductive-constructor">[]&#7525;</span><span class="agda2-highlight-symbol">)</span> <span class="agda2-highlight-symbol">_</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-datatype">&#8801;</span></span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-number">5</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-number">7</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-number">9</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-inductive-constructor">[]&#7525;</span><span class="agda2-highlight-symbol">)</span>
-  <span class="agda2-highlight-symbol">_</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-inductive-constructor"><span class="agda2-highlight-unsolved-meta">refl</span></span>
+  <span class="agda2-highlight-symbol">_</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-inductive-constructor">refl</span>
 </pre>
-<p>This is something that I can't explain, I'm unable to spot any problem with solving</p>
-<pre><code>  ToVecFun _As _B _n ≡ (Vec ℕ m -&gt; _ -&gt; Vec ℕ m)</code></pre>
-<p>with</p>
+<p>as it only needs to solve</p>
+<pre><code>  ToVecFun _As _B _n =?= Vec ℕ m -&gt; _ -&gt; Vec ℕ m</code></pre>
+<p>as</p>
 <pre><code>  _As := Vec ℕ m ∷ Vec ℕ m ∷ []
   _B  := Vec ℕ m
   _n  := m</code></pre>
-<p>And specifying <code>B</code> doesn't help in this case:</p>
-<pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-function">zipWithN</span> <span class="agda2-highlight-symbol">{</span>B <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-datatype">&#8469;</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-primitive">_+_</span></span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-number">1</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-number">2</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-number">3</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-inductive-constructor">[]&#7525;</span><span class="agda2-highlight-symbol">)</span> <span class="agda2-highlight-symbol">_</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-datatype">&#8801;</span></span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-number">5</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-number">7</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-number">9</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-inductive-constructor">[]&#7525;</span><span class="agda2-highlight-symbol">)</span>
-  <span class="agda2-highlight-symbol">_</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-inductive-constructor"><span class="agda2-highlight-unsolved-meta">refl</span></span>
+<p>(which is possible due to the type of result being the concrete <code>Vec</code>, disjoint with <code>_-&gt;_</code>) and then solve all the pointwise equations:</p>
+<pre><code>  1 + _ =?= 5
+  2 + _ =?= 6
+  3 + _ =?= 7</code></pre>
+<p>by reducing them to</p>
+<pre><code>  suc _             =?= suc (suc (suc (suc (suc _))))
+  suc (suc _)       =?= suc (suc (suc (suc (suc (suc _)))))
+  suc (suc (suc _)) =?= suc (suc (suc (suc (suc (suc (suc _))))))</code></pre>
+<p>(due to <code>_+_</code> being defined by pattern matching on its first argument) and then inverting all the <code>suc</code>s.</p>
+<p>Omitting a first vector gives yellow, though:</p>
+<pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-function">zipWithN</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-primitive">_+_</span></span> <span class="agda2-highlight-symbol">_</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-number">4</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-number">5</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-number">6</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-inductive-constructor">[]&#7525;</span><span class="agda2-highlight-symbol">)</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-datatype">&#8801;</span></span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-number">5</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-number">7</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-number">9</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">&#8759;&#7525;</span></span> <span class="agda2-highlight-inductive-constructor">[]&#7525;</span><span class="agda2-highlight-symbol">)</span>
+  <span class="agda2-highlight-symbol">_</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-unsolved-constraint"><span class="agda2-highlight-unsolved-meta"><span class="agda2-highlight-inductive-constructor">refl</span></span></span>
 </pre>
-<p>Finally that constructor-headedness is compositional. The</p>
+<p>as the version of Agda that I'm using can't solve equations like</p>
+<pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-symbol"><span class="agda2-highlight-unsolved-meta">_</span></span> <span class="agda2-highlight-operator"><span class="agda2-highlight-primitive">+</span></span> <span class="agda2-highlight-number">4</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-datatype">&#8801;</span></span> <span class="agda2-highlight-number">5</span>
+  <span class="agda2-highlight-symbol">_</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-unsolved-constraint"><span class="agda2-highlight-unsolved-meta"><span class="agda2-highlight-inductive-constructor">refl</span></span></span>
+</pre>
+<p>due <code>_ + 4</code> being stuck and not reducing to anything. Even though Agda could potentially solve such equations, given the constructor/variable-headedness of <code>_+_</code>.</p>
+<p>Finally, constructor-headedness is compositional. The</p>
 <pre><code>  ToVecFun _As _B _n =?= Vec ℕ m -&gt; Vec ℕ m -&gt; Vec ℕ m</code></pre>
 <p>problem expands to</p>
 <pre><code>  ToFun (List.map (λ A -&gt; Vec A m) _As) (Vec _B _n) =?= Vec ℕ m -&gt; Vec ℕ m -&gt; Vec ℕ m</code></pre>
@@ -1662,7 +1683,7 @@ Specializing <code>m</code> doesn't help, still yellow:
   <span class="comment">-- possible to infer it from the type of the result.</span>
   <span class="agda2-highlight-function">apN</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-symbol">&#8704;</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-bound-variable">n</span> <span class="agda2-highlight-bound-variable">B</span> <span class="agda2-highlight-bound-variable">m</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-bound-variable">As</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-function">Sets</span> <span class="agda2-highlight-bound-variable">n</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-datatype">Vec</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-function">ToFun</span> <span class="agda2-highlight-bound-variable">As</span> <span class="agda2-highlight-bound-variable">B</span><span class="agda2-highlight-symbol">)</span> <span class="agda2-highlight-bound-variable">m</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-function">ToVecFun</span> <span class="agda2-highlight-bound-variable">As</span> <span class="agda2-highlight-bound-variable">B</span> <span class="agda2-highlight-bound-variable">m</span>
   <span class="agda2-highlight-function">apN</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-number">0</span><span class="agda2-highlight-symbol">}</span>     <span class="agda2-highlight-bound-variable">ys</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-bound-variable">ys</span>
-  <span class="agda2-highlight-function">apN</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-inductive-constructor">suc</span> <span class="agda2-highlight-bound-variable">n</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-bound-variable">fs</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-symbol">&#955;</span> <span class="agda2-highlight-bound-variable">xs</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-function">apN</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-bound-variable">fs</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-function">&#8859;</span></span> <span class="agda2-highlight-bound-variable">xs</span><span class="agda2-highlight-symbol">)</span>
+  <span class="agda2-highlight-function">apN</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-inductive-constructor">suc</span> <span class="agda2-highlight-bound-variable">n</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-bound-variable">fs</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-symbol">&#955;</span> <span class="agda2-highlight-bound-variable">xs</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-function">apN</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-function">zipWith</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-function">_$_</span></span> <span class="agda2-highlight-bound-variable">fs</span> <span class="agda2-highlight-bound-variable">xs</span><span class="agda2-highlight-symbol">)</span>
 
   <span class="agda2-highlight-function">zipWithN</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-symbol">&#8704;</span> <span class="agda2-highlight-bound-variable">n</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-bound-variable">B</span> <span class="agda2-highlight-bound-variable">m</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-bound-variable">As</span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-function">Sets</span> <span class="agda2-highlight-bound-variable">n</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-function">ToFun</span> <span class="agda2-highlight-bound-variable">As</span> <span class="agda2-highlight-bound-variable">B</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-function">ToVecFun</span> <span class="agda2-highlight-bound-variable">As</span> <span class="agda2-highlight-bound-variable">B</span> <span class="agda2-highlight-bound-variable">m</span>
   <span class="agda2-highlight-function">zipWithN</span> <span class="agda2-highlight-symbol">_</span> <span class="agda2-highlight-bound-variable">f</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-function">apN</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-function">Vec.replicate</span> <span class="agda2-highlight-bound-variable">f</span><span class="agda2-highlight-symbol">)</span>
