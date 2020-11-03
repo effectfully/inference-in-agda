@@ -2502,7 +2502,7 @@ This approach generalizes to dependently typed functions as well as full univers
 module UniverseLevels where
 ```
 
-There are a bunch of definitional equalities associated with universe levels. Without them universe polymorphism would be nearly unusable. Here are the equalities:
+One another thing that Agda's unification engine handles specially is universe levels: there are a bunch of definitional equalities associated with them. Without that universe polymorphism would be nearly unusable. Here are the equalities:
 
 ```agda
   _ : ∀ {α} -> lzero ⊔ α ≡ α
@@ -2545,6 +2545,12 @@ The list of equalities shown above is not exhaustive. E.g. if during type checki
       α <= β <= α
 
 it gets solved as `α ≡ β`.
+
+## Epilogue
+
+This tutorial covers a single topic of inference in Agda and doesn't even get into actually hardcore things like higher-order unification, the Miller's pattern fragment and all this kind of stuff that Agda has under the hood. Now imagine how much can be written about all the features available in Agda.
+
+Maybe one day.
 
 ## Acknowledgements
 

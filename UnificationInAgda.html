@@ -47,6 +47,7 @@
 <li><a href="#generating-type-level-data">Generating type-level data</a></li>
 </ul></li>
 <li><a href="#universe-levels">Universe levels</a></li>
+<li><a href="#epilogue">Epilogue</a></li>
 <li><a href="#acknowledgements">Acknowledgements</a></li>
 </ul></li>
 </ul>
@@ -1719,7 +1720,7 @@ Specializing <code>m</code> doesn't help, still yellow:
 <h2 id="universe-levels">Universe levels</h2>
 <pre><span class="agda2-highlight-keyword">module</span> <span class="agda2-highlight-module">UniverseLevels</span> <span class="agda2-highlight-keyword">where</span>
 </pre>
-<p>There are a bunch of definitional equalities associated with universe levels. Without them universe polymorphism would be nearly unusable. Here are the equalities:</p>
+<p>One another thing that Agda's unification engine handles specially is universe levels: there are a bunch of definitional equalities associated with them. Without that universe polymorphism would be nearly unusable. Here are the equalities:</p>
 <pre>  <span class="agda2-highlight-symbol"><span class="agda2-highlight-function">_</span></span> <span class="agda2-highlight-symbol">:</span> <span class="agda2-highlight-symbol">&#8704;</span> <span class="agda2-highlight-symbol">{</span><span class="agda2-highlight-bound-variable">&#945;</span><span class="agda2-highlight-symbol">}</span> <span class="agda2-highlight-symbol">-&gt;</span> <span class="agda2-highlight-primitive">lzero</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-primitive">&#8852;</span></span> <span class="agda2-highlight-bound-variable">&#945;</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-datatype">&#8801;</span></span> <span class="agda2-highlight-bound-variable">&#945;</span>
   <span class="agda2-highlight-symbol">_</span> <span class="agda2-highlight-symbol">=</span> <span class="agda2-highlight-inductive-constructor">refl</span>
 
@@ -1750,6 +1751,8 @@ Specializing <code>m</code> doesn't help, still yellow:
 <p>The list of equalities shown above is not exhaustive. E.g. if during type checking Agda comes up with the following constraint:</p>
 <pre><code>  α &lt;= β &lt;= α</code></pre>
 <p>it gets solved as <code>α ≡ β</code>.</p>
+<h2 id="epilogue">Epilogue</h2>
+<p>This tutorial covers a single topic of inference in Agda and doesn't even get into actually hardcore things like higher-order unification, the Miller's pattern fragment and all this kind of stuff that Agda has under the hood. Now imagine how much can be written about all the features available in Agda. Maybe one day.</p>
 <h2 id="acknowledgements">Acknowledgements</h2>
 <p>Huge &quot;thank you&quot; goes to major contributors:</p>
 <ul>
