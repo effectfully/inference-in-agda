@@ -140,16 +140,16 @@
         background-color: #ffffff;
       }
 
-      code {                               
-        white-space: pre;                  
-        background-color: #f0f0f0;         
-        display: inline-block              
-      }                                    
-      blockquote {                         
-        padding: 0 1em;                    
-        color: #6a737d;                    
-        border-left: 0.25em solid #d1d5da; 
-      }                                    
+      code {
+        white-space: pre;
+        background-color: #f0f0f0;
+        display: inline-block
+      }
+      blockquote {
+        padding: 0 1em;
+        color: #6a737d;
+        border-left: 0.25em solid #d1d5da;
+      }
 
       a:hover {
         text-decoration: underline;
@@ -1211,7 +1211,7 @@
 <p>is subject to certain unification heuristics, which the weird one doesn't trigger.</p>
 </blockquote>
 <p>As you can see in the usual definition we return one of the arguments in the first clause and the second clause starts with a constructor. Just like for regular constructor-headed functions, Agda has enhanced inference for functions of this kind as well.</p>
-<p>Quoting the <a href="https://github.com/agda/agda/blob/064095e14042bdf64c7d7c97c2869f63f5f1f8f6/doc/release-notes/2.5.4.md#pattern-matching">changelog</a>:</p>
+<p>Quoting the <a href="github.com/agda/agda/blob/064095e14042bdf64c7d7c97c2869f63f5f1f8f6/doc/release-notes/2.5.4.md#pattern-matching">changelog</a>:</p>
 <blockquote>
 <p>Improved constraint solving for pattern matching functions Constraint solving for functions where each right-hand side has a distinct rigid head has been extended to also cover the case where some clauses return an argument of the function. A typical example is append on lists:</p>
 <pre><code>  _++_ : {A : Set} → List A → List A → List A
