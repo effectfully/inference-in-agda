@@ -6,6 +6,8 @@ module InferenceInAgda where
 
 This is a tutorial on how Agda infers things.
 
+As [pointed out](https://www.reddit.com/r/agda/comments/jo4hh8/inference_in_agda) by @gallais, some links are messed up. If the address of this page starts with "https://htmlpreview.github.io" (`htmlpreview` turned out to have a [critical bug](https://github.com/htmlpreview/htmlpreview.github.com/issues/43)), please [visit this page](https://raw.githack.com/effectfully/inference-in-agda/master/InferenceInAgda.html) and read the tutorial there if you want to have the correct links. Sorry for the inconvenience.
+
 For sources, issue reports or contributing go to [the GitHub page](https://github.com/effectfully/inference-in-agda).
 
 ## Preface

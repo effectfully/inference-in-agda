@@ -6,7 +6,7 @@ This is a tutorial on how Agda infers things.
 
 There are two ways to read the tutorial:
 
-1. [click this link](https://htmlpreview.github.io/?https://github.com/effectfully/inference-in-agda/blob/master/InferenceInAgda.html) to read the rendered HTML. Simple and sufficient, if you only want to read and not play with the code or contribute
+1. [click this link](https://raw.githack.com/effectfully/inference-in-agda/master/InferenceInAgda.html) to read the rendered HTML. Simple and sufficient, if you only want to read and not play with the code or contribute
 2. if you do want to play with the code, then install Agda, clone the repo, open the `InferenceInAgda.lagda.md` file, type check it and only then read
 
 **IMPORTANT**: reading `InferenceInAgda.lagda.md` without type checking the file beforehand is a non-option as making Agda color the code is important for understanding how things get type checked. Hence reading `InferenceInAgda.lagda.md` directly on GitHub is a non-option as well as GitHub's syntax highlighting is insufficient and the file has to actually be type checked.
