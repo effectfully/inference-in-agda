@@ -1,10 +1,10 @@
 # Unification in Agda
 
-Please do not post this publicly anywhere just yet.
+This is a tutorial on how Agda infers things.
 
 ## How to read
 
-There are two ways to read this tutorial:
+There are two ways to read the tutorial:
 
 1. [click this link](https://htmlpreview.github.io/?https://github.com/effectfully/unification-in-agda/blob/master/UnificationInAgda.html) to read the rendered HTML. Simple and sufficient, if you only want to read and not play with the code or contribute
 2. if you do want to play with the code, then install Agda, clone the repo, open the `UnificationInAgda.lagda.md` file, type check it and only then read
