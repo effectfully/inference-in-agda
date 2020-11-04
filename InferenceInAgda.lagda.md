@@ -1,10 +1,12 @@
-# Unification in Agda
+# Inference in Agda
 
 ```agda
-module UnificationInAgda where
+module InferenceInAgda where
 ```
 
-For sources, issue reports or contributing go to [the GitHub page](https://github.com/effectfully/unification-in-agda).
+This is a tutorial on how Agda infers things.
+
+For sources, issue reports or contributing go to [the GitHub page](https://github.com/effectfully/inference-in-agda).
 
 ## Preface
 
@@ -13,7 +15,7 @@ Agda is a wonderful language and its unification engines are exemplary, practica
 - unification used for getting convenient and powerful pattern matching
 - unification used for inferring values of implicit arguments
 
-These are two completely distinct machineries. This tutorial covers only the latter for the moment being. I'll probably say a few words about the former once I forget how hard it is to write long technical texts.
+These are two completely distinct machineries. This tutorial covers only the latter for the moment being as it's what gives Agda its inference capabilities. I'll probably say a few words about the former once I forget how hard it is to write long technical texts.
 
 This tutorial primarily targets
 

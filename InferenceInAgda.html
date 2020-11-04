@@ -10,7 +10,7 @@
 <body>
 <div id="TOC">
 <ul>
-<li><a href="#unification-in-agda">Unification in Agda</a><ul>
+<li><a href="#inference-in-agda">Inference in Agda</a><ul>
 <li><a href="#preface">Preface</a></li>
 <li><a href="#intro">Intro</a></li>
 <li><a href="#imports">Imports</a></li>
@@ -156,17 +156,18 @@
       }
     -->
     </style></pre>
-<h1 id="unification-in-agda">Unification in Agda</h1>
-<pre><span class="agda2-highlight-keyword">module</span> <span class="agda2-highlight-module">UnificationInAgda</span> <span class="agda2-highlight-keyword">where</span>
+<h1 id="inference-in-agda">Inference in Agda</h1>
+<pre><span class="agda2-highlight-keyword">module</span> <span class="agda2-highlight-module">InferenceInAgda</span> <span class="agda2-highlight-keyword">where</span>
 </pre>
-<p>For sources, issue reports or contributing go to <a href="https://github.com/effectfully/unification-in-agda">the GitHub page</a>.</p>
+<p>This is a tutorial on how Agda infers things.</p>
+<p>For sources, issue reports or contributing go to <a href="https://github.com/effectfully/inference-in-agda">the GitHub page</a>.</p>
 <h2 id="preface">Preface</h2>
 <p>Agda is a wonderful language and its unification engines are exemplary, practical, improve over time and work predictably well. Unification engines are one notable distiction between Agda and other dependently typed languages (such as Idris 1, Coq, Lean, etc). I'm saying &quot;unification engines&quot;, because there are two of them:</p>
 <ul>
 <li>unification used for getting convenient and powerful pattern matching</li>
 <li>unification used for inferring values of implicit arguments</li>
 </ul>
-<p>These are two completely distinct machineries. This tutorial covers only the latter for the moment being. I'll probably say a few words about the former once I forget how hard it is to write long technical texts.</p>
+<p>These are two completely distinct machineries. This tutorial covers only the latter for the moment being as it's what gives Agda its inference capabilities. I'll probably say a few words about the former once I forget how hard it is to write long technical texts.</p>
 <p>This tutorial primarily targets</p>
 <ul>
 <li>users of Agda who want to understand how to write code to make more things inferrable</li>

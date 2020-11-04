@@ -1,4 +1,4 @@
-# Unification in Agda
+# Inference in Agda
 
 This is a tutorial on how Agda infers things.
 
@@ -6,10 +6,10 @@ This is a tutorial on how Agda infers things.
 
 There are two ways to read the tutorial:
 
-1. [click this link](https://htmlpreview.github.io/?https://github.com/effectfully/unification-in-agda/blob/master/UnificationInAgda.html) to read the rendered HTML. Simple and sufficient, if you only want to read and not play with the code or contribute
-2. if you do want to play with the code, then install Agda, clone the repo, open the `UnificationInAgda.lagda.md` file, type check it and only then read
+1. [click this link](https://htmlpreview.github.io/?https://github.com/effectfully/inference-in-agda/blob/master/InferenceInAgda.html) to read the rendered HTML. Simple and sufficient, if you only want to read and not play with the code or contribute
+2. if you do want to play with the code, then install Agda, clone the repo, open the `InferenceInAgda.lagda.md` file, type check it and only then read
 
-**IMPORTANT**: reading `UnificationInAgda.lagda.md` without type checking the file beforehand is a non-option as making Agda color the code is important for understanding how things get type checked. Hence reading `UnificationInAgda.lagda.md` directly on GitHub is a non-option as well as GitHub's syntax highlighting is insufficient and the file has to actually be type checked.
+**IMPORTANT**: reading `InferenceInAgda.lagda.md` without type checking the file beforehand is a non-option as making Agda color the code is important for understanding how things get type checked. Hence reading `InferenceInAgda.lagda.md` directly on GitHub is a non-option as well as GitHub's syntax highlighting is insufficient and the file has to actually be type checked.
 
 ## Contributing
 
@@ -27,16 +27,16 @@ Building the HTML is a bit of a PITA as it requires several tools to be installe
 
 ```elisp
 (global-set-key (kbd "C-x a h") 'htmlize-buffer)
-(fset 'generate-unification-in-agda-html
-  [?\C-x ?h ?\C-u ?\M-| ?a ?g ?d ?a ?- ?h ?t ?m ?l ?- ?t ?o ?- ?m ?d return ?\C-x ?h ?\M-| ?p ?a ?n ?d ?o ?c ?  ?- ?- ?t ?o ?c ?  ?- ?s ?  ?- ?o ?  ?U ?n ?i ?f ?i ?c ?a ?t ?i ?o ?n ?I ?n ?A ?g ?d ?a ?. ?h ?t ?m ?l return])
-(global-set-key (kbd "C-x a u") 'generate-unification-in-agda-html)
+(fset 'generate-inference-in-agda-html
+  [?\C-x ?h ?\C-u ?\M-| ?a ?g ?d ?a ?- ?h ?t ?m ?l ?- ?t ?o ?- ?m ?d return ?\C-x ?h ?\M-| ?p ?a ?n ?d ?o ?c ?  ?- ?- ?t ?o ?c ?  ?- ?s ?  ?- ?o ?  ?I ?n ?f ?e ?r ?e ?n ?c ?e ?I ?n ?A ?g ?d ?a ?. ?h ?t ?m ?l return])
+(global-set-key (kbd "C-x a i") 'generate-inference-in-agda-html)
 ```
 
 #### Generating the HTML
 
 **IMPORTANT**: wait for each command to finish.
 
-1. open `UnificationInAgda.lagda.md` in emacs
+1. open `InferenceInAgda.lagda.md` in emacs
 2. `C-c C-l` (type check the file)
 3. `C-x a h` (initial htmlization of the buffer)
-4. `C-x a u` (generate the final `UnificationInAgda.html` file)
+4. `C-x a i` (generate the final `InferenceInAgda.html` file)
