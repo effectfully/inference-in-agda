@@ -1718,7 +1718,7 @@ Recall that we've been using a weird definition of plus
 
 As you can see in the usual definition we return one of the arguments in the first clause and the second clause starts with a constructor. Just like for regular constructor-headed functions, Agda has enhanced inference for functions of this kind as well.
 
-Quoting the [changelog](github.com/agda/agda/blob/064095e14042bdf64c7d7c97c2869f63f5f1f8f6/doc/release-notes/2.5.4.md#pattern-matching):
+Quoting the [changelog](https://github.com/agda/agda/blob/064095e14042bdf64c7d7c97c2869f63f5f1f8f6/doc/release-notes/2.5.4.md#pattern-matching):
 
 > Improved constraint solving for pattern matching functions
 > Constraint solving for functions where each right-hand side has a distinct rigid head has been extended to also cover the case where some clauses return an argument of the function. A typical example is append on lists:
