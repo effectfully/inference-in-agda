@@ -1794,7 +1794,7 @@ still does not type check, because inlining `m` as `1` does not make `_+_` const
       zero  +1 = suc zero
       suc n +1 = suc (n +1)
 
--- #### Example 2: polyvariadic `zipWith`: list-based
+#### Example 2: polyvariadic `zipWith`: list-based
 
 ```agda
 module PolyvariadicZipWith where

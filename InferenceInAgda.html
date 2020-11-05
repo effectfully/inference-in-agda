@@ -1264,7 +1264,7 @@ Specializing <code>m</code> doesn't help, still yellow:
 <pre><code>  _+1 : ℕ -&gt; ℕ
   zero  +1 = suc zero
   suc n +1 = suc (n +1)</code></pre>
-<p>-- #### Example 2: polyvariadic <code>zipWith</code>: list-based</p>
+<h4 id="example-2-polyvariadic-zipwith-list-based">Example 2: polyvariadic <code>zipWith</code>: list-based</h4>
 <pre><span class="agda2-highlight-keyword">module</span> <span class="agda2-highlight-module">PolyvariadicZipWith</span> <span class="agda2-highlight-keyword">where</span>
   <span class="agda2-highlight-keyword">open</span> <span class="agda2-highlight-keyword">import</span> <span class="agda2-highlight-module">Data.List.Base</span> <span class="agda2-highlight-symbol">as</span> <span class="agda2-highlight-module">List</span>
   <span class="agda2-highlight-keyword">open</span> <span class="agda2-highlight-keyword">import</span> <span class="agda2-highlight-module">Data.Vec.Base</span> <span class="agda2-highlight-symbol">as</span> <span class="agda2-highlight-module">Vec</span> <span class="agda2-highlight-keyword">renaming</span> <span class="agda2-highlight-symbol">(</span><span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">_&#8759;_</span></span> <span class="agda2-highlight-symbol">to</span> <span class="agda2-highlight-operator"><span class="agda2-highlight-inductive-constructor">_&#8759;&#7525;_</span></span><span class="agda2-highlight-symbol">;</span> <span class="agda2-highlight-inductive-constructor">[]</span> <span class="agda2-highlight-symbol">to</span> <span class="agda2-highlight-inductive-constructor">[]&#7525;</span><span class="agda2-highlight-symbol">)</span>
