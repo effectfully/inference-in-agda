@@ -1003,7 +1003,7 @@ We'll also abbreviate
       X ⇉ Y₁
       X ⇉ Y₂
       ...
-      X ⇉ yₙ
+      X ⇉ Yₙ
 
 as
 
@@ -1562,7 +1562,7 @@ and this determines that for the result to be `ℕ` the value of `_b` must be `t
       ListOfBoolOrℕ false = List Bool
       ListOfBoolOrℕ true  = List ℕ
 
-in that the latter definition has the same head in both the clauses (`List`) and so the heuristic doesn't apply. Even though Agda really could have figured out that `ListOfBoolOrℕ` is also injective (the fact that `ListOfBoolOrℕ` is not consdered invertible is more of an implementation detail than a theoretical limination).
+in that the latter definition has the same head in both the clauses (`List`) and so the heuristic doesn't apply. Even though Agda really could have figured out that `ListOfBoolOrℕ` is also injective (the fact that `ListOfBoolOrℕ` is not consdered invertible is more of an implementation detail than a theoretical limitation).
 
 Here's an example of a theoretical limitation: a definition like
 
